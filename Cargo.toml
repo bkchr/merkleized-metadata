@@ -8,3 +8,4 @@ blake3 = "1.5.0"
 frame-metadata = "16.0.0"
 codec = { package = "parity-scale-codec", version = "3.6.9", features = [ "derive" ] }
 scale-info = "2.10.0"
+array-bytes = "6.2.2"

@@ -82,3 +82,27 @@ pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDige
         metadata_hash: metadata_hash.hash(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::frame_metadata::RuntimeMetadataPrefixed;
+    use codec::Decode;
+
+    #[test]
+    fn calculate_metadata_digest_works() {
+        let metadata =
+            String::from_utf8(include_bytes!("../fixtures/polkadot_metadata_v15").to_vec())
+                .unwrap();
+
+        let metadata = array_bytes::hex2bytes(metadata.trim()).unwrap();
+
+        let digest = calculate_metadata_digest(frame_metadata::into_intermediate(
+            RuntimeMetadataPrefixed::decode(&mut &metadata[..])
+                .unwrap()
+                .1,
+        ));
+
+        assert_eq!([0u8; 32], digest.metadata_hash);
+    }
+}
