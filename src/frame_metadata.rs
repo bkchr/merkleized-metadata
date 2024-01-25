@@ -143,8 +143,8 @@ pub fn into_intermediate(metadata: RuntimeMetadata) -> Intermediate {
             .iter()
             .map(|se| SignedExtensionMetadata {
                 identifier: AsRef::<str>::as_ref(&se.identifier).to_string(),
-                ty: resolve_type(se.ty.id, &mut known_types, &registry),
-                additional_signed: resolve_type(
+                included_in_extrinsic: resolve_type(se.ty.id, &mut known_types, &registry),
+                included_in_signed_data: resolve_type(
                     se.additional_signed.id,
                     &mut known_types,
                     &registry,

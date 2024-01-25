@@ -119,8 +119,6 @@ pub struct ExtrinsicMetadata {
     pub address_ty: TypeRef,
     pub call_ty: TypeRef,
     pub signature_ty: TypeRef,
-    /// The type of the extra data added to the extrinsic.
-    pub extra_ty: TypeRef,
     /// The signed extensions in the order they appear in the extrinsic.
     pub signed_extensions: Vec<SignedExtensionMetadata>,
 }
@@ -133,29 +131,28 @@ pub struct SignedExtensionMetadata {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
-pub struct MetadataHash {
-    pub types_tree_root: Hash,
-    pub extrinsic_metadata_hash: Hash,
+pub enum MetadataDigest {
+    Disabled,
+    V1 {
+        types_tree_root: Hash,
+        extrinsic_metadata_hash: Hash,
+        spec_version: u32,
+        spec_name: String,
+        base58_prefix: u16,
+        decimals: u8,
+        token_symbol: String,
+    },
 }
 
-impl MetadataHash {
+impl MetadataDigest {
     pub fn hash(&self) -> Hash {
-        blake3::hash(&[self.types_tree_root, self.extrinsic_metadata_hash].encode()).into()
+        blake3::hash(&self.encode()).into()
     }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
-pub struct MetadataDigest {
-    pub version: u8,
-    pub metadata_hash: Hash,
 }
 
 #[derive(Debug, Encode)]
 pub enum TreeElement {
-    Node {
-        left: Hash,
-        right: Hash,
-    },
+    Node { left: Hash, right: Hash },
     Leaf(Hash),
 }
 

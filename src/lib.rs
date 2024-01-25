@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::types::TreeElement;
 use codec::Encode;
 use intermediate_repr::Intermediate;
-use types::{MetadataDigest, MetadataHash};
+use types::MetadataDigest;
 
 pub mod frame_metadata;
 mod intermediate_repr;
@@ -69,17 +69,17 @@ pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDige
 
     let tree_root = nodes.back().unwrap().hash();
 
-    let metadata_hash = MetadataHash {
+    MetadataDigest::V1 {
         types_tree_root: tree_root,
         extrinsic_metadata_hash: blake3::hash(
             &intermediate.extrinsic_metadata.as_basic_type().encode(),
         )
         .into(),
-    };
-
-    MetadataDigest {
-        version: 1,
-        metadata_hash: metadata_hash.hash(),
+        spec_version: 1,
+        spec_name: "nice".into(),
+        base58_prefix: 1,
+        decimals: 1,
+        token_symbol: "lol".into(),
     }
 }
 
@@ -107,8 +107,8 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0x1e4a64ad3a010f2978b664f0aa2f362cfd54898c549a7033d0b339863902a855",
-            array_bytes::bytes2hex("0x", &digest.metadata_hash[..])
+            "0xfc4befe0d3e2035b99656aa5c2f3680671e2bcbeebffbaa79de36ea9ba61d683",
+            array_bytes::bytes2hex("0x", &digest.hash())
         );
     }
 }

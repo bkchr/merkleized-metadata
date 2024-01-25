@@ -197,7 +197,6 @@ impl ExtrinsicMetadata {
             address_ty: self.address_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
             call_ty: self.call_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
             signature_ty: self.signature_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
-            extra_ty: self.extra_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
             signed_extensions: self
                 .signed_extensions
                 .iter()
@@ -210,16 +209,16 @@ impl ExtrinsicMetadata {
 #[derive(Clone, Debug)]
 pub struct SignedExtensionMetadata {
     pub identifier: String,
-    pub ty: TypeRef,
-    pub additional_signed: TypeRef,
+    pub included_in_extrinsic: TypeRef,
+    pub included_in_signed_data: TypeRef,
 }
 
 impl SignedExtensionMetadata {
     pub fn as_basic_type(&self) -> types::SignedExtensionMetadata {
         types::SignedExtensionMetadata {
             identifier: self.identifier.clone(),
-            ty: self.ty.borrow().as_ref().unwrap().as_basic_type_ref(),
-            additional_signed: self.additional_signed.borrow().as_ref().unwrap().as_basic_type_ref(),
+            ty: self.included_in_extrinsic.borrow().as_ref().unwrap().as_basic_type_ref(),
+            additional_signed: self.included_in_signed_data.borrow().as_ref().unwrap().as_basic_type_ref(),
         }
     }
 }
