@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::intermediate_repr::{
     ExtrinsicMetadata, Field, Intermediate, SignedExtensionMetadata, Type, TypeDef, TypeDefArray,
@@ -9,7 +9,7 @@ use scale_info::{form::PortableForm, PortableRegistry};
 
 fn convert_field(
     field: &scale_info::Field<PortableForm>,
-    known_types: &mut BTreeMap<u32, Rc<Type>>,
+    known_types: &mut BTreeMap<u32, Rc<RefCell<Option<Type>>>>,
     registry: &PortableRegistry,
 ) -> Field {
     Field {
@@ -27,14 +27,16 @@ fn convert_field(
 
 fn resolve_type(
     ty_id: u32,
-    known_types: &mut BTreeMap<u32, Rc<Type>>,
+    known_types: &mut BTreeMap<u32, Rc<RefCell<Option<Type>>>>,
     registry: &PortableRegistry,
-) -> Rc<Type> {
+) -> Rc<RefCell<Option<Type>>> {
     let ty = &registry.types[ty_id as usize];
 
     if let Some(ty) = known_types.get(&ty.id) {
         return ty.clone();
     }
+
+    known_types.insert(ty_id, Rc::new(RefCell::new(None)));
 
     let path = ty
         .ty
@@ -106,14 +108,14 @@ fn resolve_type(
         }),
     };
 
-    let ty = Rc::new(Type {
+    let ty = known_types.get(&ty_id).unwrap().clone();
+    *ty.borrow_mut() = Some(Type {
         path,
         type_params,
         type_def,
-        unique_id: ty.id.into(),
+        unique_id: ty_id.into(),
     });
 
-    known_types.insert(*ty.unique_id.borrow(), ty.clone());
     ty
 }
 
@@ -123,7 +125,7 @@ pub fn into_intermediate(metadata: RuntimeMetadata) -> Intermediate {
         _ => unimplemented!(),
     };
 
-    let mut known_types = BTreeMap::<u32, Rc<Type>>::default();
+    let mut known_types = BTreeMap::<u32, Rc<RefCell<Option<Type>>>>::default();
 
     let ext_meta = match &metadata {
         RuntimeMetadata::V15(m) => &m.extrinsic,

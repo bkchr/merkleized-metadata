@@ -10,26 +10,26 @@ mod intermediate_repr;
 mod types;
 
 pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDigest {
-    intermediate.types.sort_by_key(|t| *t.unique_id.borrow());
+    intermediate
+        .types
+        .sort_by_key(|t| *t.borrow().as_ref().unwrap().unique_id.borrow());
 
     intermediate
         .types
         .iter()
         .enumerate()
         .for_each(|(index, t)| {
-            if let intermediate_repr::TypeDef::Variant(v) = &t.type_def {
-                intermediate
-                    .types
-                    .iter()
-                    .skip(index + 1)
-                    .for_each(|t| *t.unique_id.borrow_mut() += v.len() as u32);
+            if let intermediate_repr::TypeDef::Variant(v) = &t.borrow().as_ref().unwrap().type_def {
+                intermediate.types.iter().skip(index + 1).for_each(|t| {
+                    *t.borrow().as_ref().unwrap().unique_id.borrow_mut() += v.len() as u32
+                });
             }
         });
 
     let mut leaves = intermediate
         .types
         .iter()
-        .map(|t| t.as_basic_types())
+        .map(|t| t.borrow().as_ref().unwrap().as_basic_types())
         .flatten()
         .map(|t| TreeElement::Leaf(blake3::hash(&t.encode()).into()))
         .collect::<VecDeque<_>>();
@@ -92,17 +92,23 @@ mod tests {
     #[test]
     fn calculate_metadata_digest_works() {
         let metadata =
-            String::from_utf8(include_bytes!("../fixtures/polkadot_metadata_v15").to_vec())
-                .unwrap();
+            String::from_utf8(include_bytes!("../fixtures/rococo_metadata_v15").to_vec()).unwrap();
 
-        let metadata = array_bytes::hex2bytes(metadata.trim()).unwrap();
+        let metadata = Option::<Vec<u8>>::decode(
+            &mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+        )
+        .unwrap()
+        .unwrap();
 
-        let digest = calculate_metadata_digest(frame_metadata::into_intermediate(
-            RuntimeMetadataPrefixed::decode(&mut &metadata[..])
-                .unwrap()
-                .1,
-        ));
+        let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..])
+            .unwrap()
+            .1;
 
-        assert_eq!([0u8; 32], digest.metadata_hash);
+        let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
+
+        assert_eq!(
+            "0x1e4a64ad3a010f2978b664f0aa2f362cfd54898c549a7033d0b339863902a855",
+            array_bytes::bytes2hex("0x", &digest.metadata_hash[..])
+        );
     }
 }
