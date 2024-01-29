@@ -71,7 +71,7 @@ fn resolve_type(
                 .map(|f| convert_field(f, known_types, registry))
                 .collect::<Vec<_>>(),
         ),
-        scale_info::TypeDef::Variant(v) => TypeDef::Variant(
+        scale_info::TypeDef::Variant(v) => TypeDef::Enumeration(
             v.variants
                 .iter()
                 .map(|v| Variant {

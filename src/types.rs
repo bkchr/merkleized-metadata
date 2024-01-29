@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use codec::{Compact, Encode};
 
 /// A reference to a type in the registry.
@@ -9,9 +11,9 @@ pub enum TypeDef {
     /// A composite type (e.g. a struct or a tuple)
     #[codec(index = 0)]
     Composite(Vec<Field>),
-    /// A variant type (e.g. an enum)
+    /// An enumeration.
     #[codec(index = 1)]
-    Variant(TypeDefVariant),
+    Enumeration(Hash),
     /// A sequence type with runtime known length.
     #[codec(index = 2)]
     Sequence(TypeRef),
@@ -44,6 +46,12 @@ pub struct TypeDefVariant {
     pub name: String,
     pub fields: Vec<Field>,
     pub index: u8,
+}
+
+impl TypeDefVariant {
+    pub fn hash(&self) -> Hash {
+        blake3::hash(&self.encode()).into()
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
@@ -102,6 +110,12 @@ pub struct Type {
     pub type_def: TypeDef,
 }
 
+impl Type {
+    pub fn hash(&self) -> Hash {
+        blake3::hash(&self.encode()).into()
+    }
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub struct TypeParameter {
     /// The name of the generic type parameter e.g. "T".
@@ -151,13 +165,65 @@ impl MetadataDigest {
 }
 
 #[derive(Debug, Encode)]
-pub enum TreeElement {
+pub enum MerkleTree {
     Node { left: Hash, right: Hash },
     Leaf(Hash),
 }
 
-impl TreeElement {
+impl MerkleTree {
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
+    }
+
+    pub fn calculate_root(leaves: impl IntoIterator<Item = Hash>) -> Hash {
+        let mut leaves = leaves
+            .into_iter()
+            .map(MerkleTree::Leaf)
+            .collect::<VecDeque<_>>();
+
+        let mut nodes = VecDeque::new();
+
+        while leaves.len() > 1 {
+            let left = leaves
+                .pop_front()
+                .expect("We have more than one element; qed");
+            let right = leaves
+                .pop_front()
+                .expect("We have more than one element; qed");
+
+            nodes.push_back(MerkleTree::Node {
+                left: left.hash(),
+                right: right.hash(),
+            })
+        }
+
+        if let Some(last) = leaves.pop_front() {
+            if let Some(back) = nodes.back_mut() {
+                *back = MerkleTree::Node {
+                    left: back.hash(),
+                    right: last.hash(),
+                };
+            } else {
+                nodes.push_back(last);
+            }
+        }
+
+        while nodes.len() > 1 {
+            let left = nodes
+                .pop_front()
+                .expect("We have more than one element; qed");
+            let right = nodes
+                .pop_front()
+                .expect("We have more than one element; qed");
+
+            nodes.push_back(MerkleTree::Node {
+                left: left.hash(),
+                right: right.hash(),
+            })
+        }
+
+        nodes
+            .pop_back()
+            .map_or_else(|| Default::default(), |n| n.hash())
     }
 }

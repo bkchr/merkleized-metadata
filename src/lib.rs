@@ -1,6 +1,4 @@
-use std::collections::VecDeque;
-
-use crate::types::TreeElement;
+use crate::types::MerkleTree;
 use codec::Encode;
 use intermediate_repr::Intermediate;
 use types::MetadataDigest;
@@ -14,60 +12,12 @@ pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDige
         .types
         .sort_by_key(|t| *t.borrow().as_ref().unwrap().unique_id.borrow());
 
-    intermediate
-        .types
-        .iter()
-        .enumerate()
-        .for_each(|(index, t)| {
-            if let intermediate_repr::TypeDef::Variant(v) = &t.borrow().as_ref().unwrap().type_def {
-                intermediate.types.iter().skip(index + 1).for_each(|t| {
-                    *t.borrow().as_ref().unwrap().unique_id.borrow_mut() += v.len() as u32
-                });
-            }
-        });
-
-    let mut leaves = intermediate
-        .types
-        .iter()
-        .map(|t| t.borrow().as_ref().unwrap().as_basic_types())
-        .flatten()
-        .map(|t| TreeElement::Leaf(blake3::hash(&t.encode()).into()))
-        .collect::<VecDeque<_>>();
-
-    let mut nodes = VecDeque::new();
-
-    while leaves.len() > 1 {
-        let left = leaves.pop_front().unwrap();
-        let right = leaves.pop_front().unwrap();
-
-        nodes.push_back(TreeElement::Node {
-            left: left.hash(),
-            right: right.hash(),
-        });
-    }
-
-    if let Some(left_over) = leaves.pop_front() {
-        if let Some(last_node) = nodes.back_mut() {
-            *last_node = TreeElement::Node {
-                left: last_node.hash(),
-                right: left_over.hash(),
-            }
-        } else {
-            nodes.push_back(left_over);
-        }
-    }
-
-    while nodes.len() > 1 {
-        let left = nodes.pop_front().unwrap();
-        let right = nodes.pop_front().unwrap();
-
-        nodes.push_back(TreeElement::Node {
-            left: left.hash(),
-            right: right.hash(),
-        });
-    }
-
-    let tree_root = nodes.back().unwrap().hash();
+    let tree_root = MerkleTree::calculate_root(
+        intermediate
+            .types
+            .iter()
+            .map(|t| t.borrow().as_ref().unwrap().as_basic_type().hash()),
+    );
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -107,7 +57,7 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0xfc4befe0d3e2035b99656aa5c2f3680671e2bcbeebffbaa79de36ea9ba61d683",
+            "0x1c9360ef5514a5023efc2c8fa70f79823a4de08906d8aea785d030c9dd4c2bb3",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }

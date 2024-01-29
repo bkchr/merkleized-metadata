@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::types;
+use crate::types::{self, MerkleTree};
 
 pub struct Intermediate {
     pub types: Vec<TypeRef>,
@@ -13,7 +13,7 @@ pub type TypeRef = Rc<RefCell<Option<Type>>>;
 #[derive(Clone, Debug)]
 pub enum TypeDef {
     Composite(Vec<Field>),
-    Variant(Vec<Variant>),
+    Enumeration(Vec<Variant>),
     Sequence(TypeRef),
     Array(TypeDefArray),
     Tuple(Vec<TypeRef>),
@@ -66,7 +66,12 @@ impl TypeDefArray {
     pub fn as_basic_type(&self) -> types::TypeDefArray {
         types::TypeDefArray {
             len: self.len,
-            type_param: self.type_param.borrow().as_ref().unwrap().as_basic_type_ref(),
+            type_param: self
+                .type_param
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
         }
     }
 }
@@ -80,8 +85,18 @@ pub struct TypeDefBitSequence {
 impl TypeDefBitSequence {
     pub fn as_basic_type(&self) -> types::TypeDefBitSequence {
         types::TypeDefBitSequence {
-            bit_store_type: self.bit_store_type.borrow().as_ref().unwrap().as_basic_type_ref(),
-            bit_order_type: self.bit_order_type.borrow().as_ref().unwrap().as_basic_type_ref(),
+            bit_store_type: self
+                .bit_store_type
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
+            bit_order_type: self
+                .bit_order_type
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
         }
     }
 }
@@ -98,17 +113,14 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn as_basic_types(&self) -> Vec<types::Type> {
+    pub fn as_basic_type(&self) -> types::Type {
         let type_def = match &self.type_def {
-            TypeDef::Variant(v) => {
-                return v
-                    .iter()
-                    .map(|v| types::Type {
-                        path: self.path.clone(),
-                        type_params: self.type_params.iter().map(|t| t.as_basic_type()).collect(),
-                        type_def: types::TypeDef::Variant(v.as_basic_type()),
-                    })
-                    .collect()
+            TypeDef::Enumeration(v) => {
+                let mut variants = v.clone();
+                variants.sort_by_key(|v| v.index);
+                let variant_root_hash =
+                    MerkleTree::calculate_root(variants.iter().map(|v| v.as_basic_type().hash()));
+                types::TypeDef::Enumeration(variant_root_hash)
             }
             TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type()),
             TypeDef::Composite(c) => {
@@ -139,7 +151,9 @@ impl Type {
                 scale_info::TypeDefPrimitive::I128 => types::TypeDefPrimitive::I128,
                 scale_info::TypeDefPrimitive::I256 => types::TypeDefPrimitive::I256,
             }),
-            TypeDef::Compact(c) => types::TypeDef::Compact(c.borrow().as_ref().unwrap().as_basic_type_ref()),
+            TypeDef::Compact(c) => {
+                types::TypeDef::Compact(c.borrow().as_ref().unwrap().as_basic_type_ref())
+            }
             TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
         };
 
@@ -194,9 +208,19 @@ impl ExtrinsicMetadata {
     pub fn as_basic_type(&self) -> types::ExtrinsicMetadata {
         types::ExtrinsicMetadata {
             version: self.version,
-            address_ty: self.address_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
+            address_ty: self
+                .address_ty
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
             call_ty: self.call_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
-            signature_ty: self.signature_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
+            signature_ty: self
+                .signature_ty
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
             signed_extensions: self
                 .signed_extensions
                 .iter()
@@ -217,8 +241,18 @@ impl SignedExtensionMetadata {
     pub fn as_basic_type(&self) -> types::SignedExtensionMetadata {
         types::SignedExtensionMetadata {
             identifier: self.identifier.clone(),
-            ty: self.included_in_extrinsic.borrow().as_ref().unwrap().as_basic_type_ref(),
-            additional_signed: self.included_in_signed_data.borrow().as_ref().unwrap().as_basic_type_ref(),
+            ty: self
+                .included_in_extrinsic
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
+            additional_signed: self
+                .included_in_signed_data
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_basic_type_ref(),
         }
     }
 }
