@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::types::MerkleTree;
 use codec::Encode;
 use intermediate_repr::Intermediate;
@@ -8,16 +10,20 @@ mod intermediate_repr;
 mod types;
 
 pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDigest {
-    intermediate
+    let mut types = intermediate
         .types
-        .sort_by_key(|t| *t.borrow().as_ref().unwrap().unique_id.borrow());
+        .into_iter()
+        .filter_map(|t| {
+            t.borrow()
+                .expect_resolved()
+                .as_basic_type()
+                .map(|bt| (*t.borrow().expect_resolved().unique_id.borrow(), bt))
+        })
+        .collect::<Vec<_>>();
 
-    let tree_root = MerkleTree::calculate_root(
-        intermediate
-            .types
-            .iter()
-            .map(|t| t.borrow().as_ref().unwrap().as_basic_type().hash()),
-    );
+    types.sort_by_key(|t| t.0);
+
+    let tree_root = MerkleTree::calculate_root(types.iter().map(|(i, t)| t.hash()));
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,

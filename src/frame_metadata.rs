@@ -109,7 +109,7 @@ fn resolve_type(
     };
 
     let ty = known_types.get(&ty_id).unwrap().clone();
-    *ty.borrow_mut().resolved(Type {
+    ty.borrow_mut().resolved(Type {
         path,
         type_params,
         type_def,

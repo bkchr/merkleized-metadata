@@ -52,7 +52,7 @@ impl Field {
     pub fn as_basic_type(&self) -> types::Field {
         types::Field {
             name: self.name.clone(),
-            ty: (*self.ty.borrow().expect_resolved().unique_id.borrow()).into(),
+            ty: self.ty.borrow().expect_resolved().as_basic_type_ref(),
             type_name: self.type_name.clone(),
         }
     }
@@ -129,7 +129,7 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn as_basic_type(&self) -> types::Type {
+    pub fn as_basic_type(&self) -> Option<types::Type> {
         let type_def = match &self.type_def {
             TypeDef::Enumeration(v) => {
                 let mut variants = v.clone();
@@ -150,7 +150,20 @@ impl Type {
                     .map(|t| t.borrow().expect_resolved().as_basic_type_ref())
                     .collect(),
             ),
-            TypeDef::Primitive(p) => types::TypeDef::Primitive(match p {
+            TypeDef::Compact(_) | TypeDef::Primitive(_) => return None,
+            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
+        };
+
+        Some(types::Type {
+            path: self.path.clone(),
+            type_params: self.type_params.iter().map(|t| t.as_basic_type()).collect(),
+            type_def,
+        })
+    }
+
+    pub fn as_basic_type_ref(&self) -> types::TypeRef {
+        match &self.type_def {
+            TypeDef::Primitive(p) => types::TypeRef::Primitive(match p {
                 scale_info::TypeDefPrimitive::Bool => types::Primitives::Bool,
                 scale_info::TypeDefPrimitive::Char => types::Primitives::Char,
                 scale_info::TypeDefPrimitive::Str => types::Primitives::Str,
@@ -168,20 +181,87 @@ impl Type {
                 scale_info::TypeDefPrimitive::I256 => types::Primitives::I256,
             }),
             TypeDef::Compact(c) => {
-                types::TypeDef::Compact(c.borrow().expect_resolved().as_basic_type_ref())
-            }
-            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
-        };
+                let mut found_types = Vec::new();
+                c.borrow()
+                    .expect_resolved()
+                    .go_down_to_primitives(&mut |t| found_types.push(t.clone()));
 
-        vec![types::Type {
-            path: self.path.clone(),
-            type_params: self.type_params.iter().map(|t| t.as_basic_type()).collect(),
-            type_def,
-        }]
+                let res = if found_types.len() > 1 {
+                    panic!("Unexpected: {found_types:?}")
+                } else if let Some(found) = found_types.first() {
+                    match found {
+                        scale_info::TypeDefPrimitive::U8 => types::Primitives::CompactU8,
+                        scale_info::TypeDefPrimitive::U16 => types::Primitives::CompactU16,
+                        scale_info::TypeDefPrimitive::U32 => types::Primitives::CompactU32,
+                        scale_info::TypeDefPrimitive::U64 => types::Primitives::CompactU64,
+                        scale_info::TypeDefPrimitive::U128 => types::Primitives::CompactU128,
+                        p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
+                    }
+                } else {
+                    types::Primitives::Nothing
+                };
+
+                types::TypeRef::Primitive(res)
+            }
+            TypeDef::Composite(f) if f.is_empty() => {
+                types::TypeRef::Primitive(types::Primitives::Nothing)
+            }
+            TypeDef::Tuple(t) if t.is_empty() => {
+                types::TypeRef::Primitive(types::Primitives::Nothing)
+            }
+            _ => types::TypeRef::Ref((*self.unique_id.borrow()).into()),
+        }
     }
 
-    pub fn as_basic_type_ref(&self) -> types::TypeRef {
-        (*self.unique_id.borrow()).into()
+    fn go_down_to_primitives(&self, callback: &mut impl FnMut(&scale_info::TypeDefPrimitive)) {
+        match &self.type_def {
+            TypeDef::Enumeration(v) => {
+                v.iter().for_each(|v| {
+                    for f in &v.fields {
+                        f.ty.borrow()
+                            .expect_resolved()
+                            .go_down_to_primitives(callback)
+                    }
+                });
+            }
+            TypeDef::Array(a) => a
+                .type_param
+                .borrow()
+                .expect_resolved()
+                .go_down_to_primitives(callback),
+            TypeDef::Composite(c) => {
+                c.iter().for_each(|f| {
+                    f.ty.borrow()
+                        .expect_resolved()
+                        .go_down_to_primitives(callback)
+                });
+            }
+            TypeDef::Sequence(s) => {
+                s.borrow().expect_resolved().go_down_to_primitives(callback);
+            }
+            TypeDef::Tuple(t) => t
+                .iter()
+                .for_each(|t| t.borrow().expect_resolved().go_down_to_primitives(callback)),
+            TypeDef::Compact(c) => c.borrow().expect_resolved().go_down_to_primitives(callback),
+            TypeDef::Primitive(p) => callback(p),
+            TypeDef::BitSequence(b) => {
+                b.bit_order_type
+                    .borrow()
+                    .expect_resolved()
+                    .go_down_to_primitives(callback);
+                b.bit_store_type
+                    .borrow()
+                    .expect_resolved()
+                    .go_down_to_primitives(callback);
+            }
+        }
+    }
+
+    pub fn as_primitive_type(&self) -> Option<scale_info::TypeDefPrimitive> {
+        match dbg!(&self.type_def) {
+            TypeDef::Primitive(p) => Some(p.clone()),
+            _ => None,
+        }
     }
 }
 

@@ -3,7 +3,12 @@ use std::collections::VecDeque;
 use codec::{Compact, Encode};
 
 /// A reference to a type in the registry.
-pub type TypeRef = Compact<u32>;
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
+pub enum TypeRef {
+    Ref(Compact<u32>),
+    Primitive(Primitives),
+}
+
 pub type Hash = [u8; 32];
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
@@ -23,14 +28,8 @@ pub enum TypeDef {
     /// A tuple type.
     #[codec(index = 4)]
     Tuple(Vec<TypeRef>),
-    /// A Rust primitive type.
-    #[codec(index = 5)]
-    Primitive(TypeDefPrimitive),
-    /// A type using the [`Compact`] encoding
-    #[codec(index = 6)]
-    Compact(TypeRef),
     /// A type representing a sequence of bits.
-    #[codec(index = 7)]
+    #[codec(index = 5)]
     BitSequence(TypeDefBitSequence),
 }
 
@@ -61,7 +60,7 @@ pub struct TypeDefArray {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]
-pub enum TypeDefPrimitive {
+pub enum Primitives {
     #[codec(index = 0)]
     Bool,
     #[codec(index = 1)]
@@ -92,6 +91,18 @@ pub enum TypeDefPrimitive {
     I128,
     #[codec(index = 14)]
     I256,
+    #[codec(index = 15)]
+    CompactU8,
+    #[codec(index = 16)]
+    CompactU16,
+    #[codec(index = 17)]
+    CompactU32,
+    #[codec(index = 18)]
+    CompactU64,
+    #[codec(index = 19)]
+    CompactU128,
+    #[codec(index = 20)]
+    Nothing,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]
