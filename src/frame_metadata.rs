@@ -2,14 +2,14 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::intermediate_repr::{
     ExtrinsicMetadata, Field, Intermediate, SignedExtensionMetadata, Type, TypeDef, TypeDefArray,
-    TypeDefBitSequence, TypeParameter, Variant,
+    TypeDefBitSequence, TypeParameter, TypeRef, TypeRefInner, Variant,
 };
 use frame_metadata::RuntimeMetadata;
 use scale_info::{form::PortableForm, PortableRegistry};
 
 fn convert_field(
     field: &scale_info::Field<PortableForm>,
-    known_types: &mut BTreeMap<u32, Rc<RefCell<Option<Type>>>>,
+    known_types: &mut BTreeMap<u32, TypeRef>,
     registry: &PortableRegistry,
 ) -> Field {
     Field {
@@ -27,16 +27,16 @@ fn convert_field(
 
 fn resolve_type(
     ty_id: u32,
-    known_types: &mut BTreeMap<u32, Rc<RefCell<Option<Type>>>>,
+    known_types: &mut BTreeMap<u32, TypeRef>,
     registry: &PortableRegistry,
-) -> Rc<RefCell<Option<Type>>> {
+) -> TypeRef {
     let ty = &registry.types[ty_id as usize];
 
     if let Some(ty) = known_types.get(&ty.id) {
         return ty.clone();
     }
 
-    known_types.insert(ty_id, Rc::new(RefCell::new(None)));
+    known_types.insert(ty_id, Rc::new(RefCell::new(TypeRefInner::Unresolved)));
 
     let path = ty
         .ty
@@ -109,7 +109,7 @@ fn resolve_type(
     };
 
     let ty = known_types.get(&ty_id).unwrap().clone();
-    *ty.borrow_mut() = Some(Type {
+    *ty.borrow_mut().resolved(Type {
         path,
         type_params,
         type_def,
@@ -125,7 +125,7 @@ pub fn into_intermediate(metadata: RuntimeMetadata) -> Intermediate {
         _ => unimplemented!(),
     };
 
-    let mut known_types = BTreeMap::<u32, Rc<RefCell<Option<Type>>>>::default();
+    let mut known_types = BTreeMap::<u32, TypeRef>::default();
 
     let ext_meta = match &metadata {
         RuntimeMetadata::V15(m) => &m.extrinsic,

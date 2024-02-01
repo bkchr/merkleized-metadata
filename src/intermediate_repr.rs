@@ -8,7 +8,26 @@ pub struct Intermediate {
 }
 
 /// A reference to a type in the registry.
-pub type TypeRef = Rc<RefCell<Option<Type>>>;
+pub type TypeRef = Rc<RefCell<TypeRefInner>>;
+
+#[derive(Clone, Debug)]
+pub enum TypeRefInner {
+    Unresolved,
+    Resolved(Type),
+}
+
+impl TypeRefInner {
+    pub fn expect_resolved(&self) -> &Type {
+        match self {
+            Self::Resolved(t) => t,
+            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+        }
+    }
+
+    pub fn resolved(&mut self, ty: Type) {
+        *self = Self::Resolved(ty);
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum TypeDef {
@@ -33,7 +52,7 @@ impl Field {
     pub fn as_basic_type(&self) -> types::Field {
         types::Field {
             name: self.name.clone(),
-            ty: (*self.ty.borrow().as_ref().unwrap().unique_id.borrow()).into(),
+            ty: (*self.ty.borrow().expect_resolved().unique_id.borrow()).into(),
             type_name: self.type_name.clone(),
         }
     }
@@ -69,8 +88,7 @@ impl TypeDefArray {
             type_param: self
                 .type_param
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
         }
     }
@@ -88,14 +106,12 @@ impl TypeDefBitSequence {
             bit_store_type: self
                 .bit_store_type
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
             bit_order_type: self
                 .bit_order_type
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
         }
     }
@@ -127,32 +143,32 @@ impl Type {
                 types::TypeDef::Composite(c.iter().map(|f| f.as_basic_type()).collect())
             }
             TypeDef::Sequence(s) => {
-                types::TypeDef::Sequence(s.borrow().as_ref().unwrap().as_basic_type_ref())
+                types::TypeDef::Sequence(s.borrow().expect_resolved().as_basic_type_ref())
             }
             TypeDef::Tuple(t) => types::TypeDef::Tuple(
                 t.iter()
-                    .map(|t| t.borrow().as_ref().unwrap().as_basic_type_ref())
+                    .map(|t| t.borrow().expect_resolved().as_basic_type_ref())
                     .collect(),
             ),
             TypeDef::Primitive(p) => types::TypeDef::Primitive(match p {
-                scale_info::TypeDefPrimitive::Bool => types::TypeDefPrimitive::Bool,
-                scale_info::TypeDefPrimitive::Char => types::TypeDefPrimitive::Char,
-                scale_info::TypeDefPrimitive::Str => types::TypeDefPrimitive::Str,
-                scale_info::TypeDefPrimitive::U8 => types::TypeDefPrimitive::U8,
-                scale_info::TypeDefPrimitive::U16 => types::TypeDefPrimitive::U16,
-                scale_info::TypeDefPrimitive::U32 => types::TypeDefPrimitive::U32,
-                scale_info::TypeDefPrimitive::U64 => types::TypeDefPrimitive::U64,
-                scale_info::TypeDefPrimitive::U128 => types::TypeDefPrimitive::U128,
-                scale_info::TypeDefPrimitive::U256 => types::TypeDefPrimitive::U256,
-                scale_info::TypeDefPrimitive::I8 => types::TypeDefPrimitive::I8,
-                scale_info::TypeDefPrimitive::I16 => types::TypeDefPrimitive::I16,
-                scale_info::TypeDefPrimitive::I32 => types::TypeDefPrimitive::I32,
-                scale_info::TypeDefPrimitive::I64 => types::TypeDefPrimitive::I64,
-                scale_info::TypeDefPrimitive::I128 => types::TypeDefPrimitive::I128,
-                scale_info::TypeDefPrimitive::I256 => types::TypeDefPrimitive::I256,
+                scale_info::TypeDefPrimitive::Bool => types::Primitives::Bool,
+                scale_info::TypeDefPrimitive::Char => types::Primitives::Char,
+                scale_info::TypeDefPrimitive::Str => types::Primitives::Str,
+                scale_info::TypeDefPrimitive::U8 => types::Primitives::U8,
+                scale_info::TypeDefPrimitive::U16 => types::Primitives::U16,
+                scale_info::TypeDefPrimitive::U32 => types::Primitives::U32,
+                scale_info::TypeDefPrimitive::U64 => types::Primitives::U64,
+                scale_info::TypeDefPrimitive::U128 => types::Primitives::U128,
+                scale_info::TypeDefPrimitive::U256 => types::Primitives::U256,
+                scale_info::TypeDefPrimitive::I8 => types::Primitives::I8,
+                scale_info::TypeDefPrimitive::I16 => types::Primitives::I16,
+                scale_info::TypeDefPrimitive::I32 => types::Primitives::I32,
+                scale_info::TypeDefPrimitive::I64 => types::Primitives::I64,
+                scale_info::TypeDefPrimitive::I128 => types::Primitives::I128,
+                scale_info::TypeDefPrimitive::I256 => types::Primitives::I256,
             }),
             TypeDef::Compact(c) => {
-                types::TypeDef::Compact(c.borrow().as_ref().unwrap().as_basic_type_ref())
+                types::TypeDef::Compact(c.borrow().expect_resolved().as_basic_type_ref())
             }
             TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
         };
@@ -186,7 +202,7 @@ impl TypeParameter {
             ty: self
                 .ty
                 .as_ref()
-                .map(|t| t.borrow().as_ref().unwrap().as_basic_type_ref()),
+                .map(|t| t.borrow().expect_resolved().as_basic_type_ref()),
         }
     }
 }
@@ -211,15 +227,13 @@ impl ExtrinsicMetadata {
             address_ty: self
                 .address_ty
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
-            call_ty: self.call_ty.borrow().as_ref().unwrap().as_basic_type_ref(),
+            call_ty: self.call_ty.borrow().expect_resolved().as_basic_type_ref(),
             signature_ty: self
                 .signature_ty
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
             signed_extensions: self
                 .signed_extensions
@@ -244,14 +258,12 @@ impl SignedExtensionMetadata {
             ty: self
                 .included_in_extrinsic
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
             additional_signed: self
                 .included_in_signed_data
                 .borrow()
-                .as_ref()
-                .unwrap()
+                .expect_resolved()
                 .as_basic_type_ref(),
         }
     }
