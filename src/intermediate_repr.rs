@@ -24,6 +24,13 @@ impl TypeRefInner {
         }
     }
 
+    pub fn expect_resolved_mut(&mut self) -> &mut Type {
+        match self {
+            Self::Resolved(t) => t,
+            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+        }
+    }
+
     pub fn resolved(&mut self, ty: Type) {
         *self = Self::Resolved(ty);
     }
@@ -134,10 +141,18 @@ pub struct Type {
     pub path: Vec<String>,
     /// The actual type definition
     pub type_def: TypeDef,
-    pub unique_id: u32,
+    pub unique_id: RefCell<u32>,
 }
 
 impl Type {
+    pub fn unique_id(&self) -> u32 {
+        *self.unique_id.borrow()
+    }
+
+    pub fn set_unique_id(&mut self, id: u32) {
+        *self.unique_id.borrow_mut() = id;
+    }
+
     pub fn as_basic_type(&self) -> Option<types::Type> {
         let mut collector = CollectPrimitives::default();
         collector.visit_type(&mut Default::default(), self);
@@ -216,7 +231,7 @@ impl Type {
             TypeDef::Tuple(_) | TypeDef::Composite(_) if collector.found.is_empty() => {
                 types::TypeRef::Primitive(types::Primitives::Void)
             }
-            _ => types::TypeRef::Ref(self.unique_id.into()),
+            _ => types::TypeRef::Ref(self.unique_id().into()),
         }
     }
 }
@@ -250,46 +265,46 @@ pub fn visit_type_def<V: Visitor + ?Sized>(
         TypeDef::Enumeration(v) => {
             v.iter().for_each(|v| {
                 for f in &v.fields {
-                    if already_visited.insert(f.ty.borrow().expect_resolved().unique_id) {
+                    if already_visited.insert(f.ty.borrow().expect_resolved().unique_id()) {
                         visitor.visit_type(already_visited, f.ty.borrow().expect_resolved())
                     }
                 }
             });
         }
         TypeDef::Array(a) => {
-            if already_visited.insert(a.type_param.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(a.type_param.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, a.type_param.borrow().expect_resolved())
             }
         }
         TypeDef::Composite(c) => {
             c.iter().for_each(|f| {
-                if already_visited.insert(f.ty.borrow().expect_resolved().unique_id) {
+                if already_visited.insert(f.ty.borrow().expect_resolved().unique_id()) {
                     visitor.visit_type(already_visited, f.ty.borrow().expect_resolved())
                 }
             });
         }
         TypeDef::Sequence(s) => {
-            if already_visited.insert(s.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(s.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, s.borrow().expect_resolved())
             }
         }
         TypeDef::Tuple(t) => t.iter().for_each(|t| {
-            if already_visited.insert(t.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(t.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, t.borrow().expect_resolved())
             }
         }),
         TypeDef::Compact(c) => {
-            if already_visited.insert(c.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(c.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, c.borrow().expect_resolved())
             }
         }
         TypeDef::Primitive(p) => visitor.visit_primitive(p),
         TypeDef::BitSequence(b) => {
-            if already_visited.insert(b.bit_order_type.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(b.bit_order_type.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, b.bit_order_type.borrow().expect_resolved())
             }
 
-            if already_visited.insert(b.bit_store_type.borrow().expect_resolved().unique_id) {
+            if already_visited.insert(b.bit_store_type.borrow().expect_resolved().unique_id()) {
                 visitor.visit_type(already_visited, b.bit_store_type.borrow().expect_resolved())
             }
         }
@@ -303,8 +318,6 @@ pub struct ExtrinsicMetadata {
     pub address_ty: TypeRef,
     pub call_ty: TypeRef,
     pub signature_ty: TypeRef,
-    /// The type of the extra data added to the extrinsic.
-    pub extra_ty: TypeRef,
     /// The signed extensions in the order they appear in the extrinsic.
     pub signed_extensions: Vec<SignedExtensionMetadata>,
 }

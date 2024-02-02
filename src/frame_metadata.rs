@@ -117,7 +117,6 @@ pub fn into_intermediate(metadata: RuntimeMetadata) -> Intermediate {
         call_ty: resolve_type(ext_meta.call_ty.id, &mut known_types, registry),
         address_ty: resolve_type(ext_meta.address_ty.id, &mut known_types, registry),
         signature_ty: resolve_type(ext_meta.signature_ty.id, &mut known_types, registry),
-        extra_ty: resolve_type(ext_meta.extra_ty.id, &mut known_types, registry),
         version: ext_meta.version,
         signed_extensions: ext_meta
             .signed_extensions

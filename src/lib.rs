@@ -1,27 +1,127 @@
-use crate::types::MerkleTree;
+use crate::{
+    intermediate_repr::{visit_type, Visitor},
+    types::MerkleTree,
+};
 use codec::Encode;
 use intermediate_repr::Intermediate;
+use std::collections::{HashMap, HashSet};
 use types::MetadataDigest;
 
 pub mod frame_metadata;
 mod intermediate_repr;
 mod types;
 
+#[derive(Default)]
+struct ObserveTypeOrder {
+    types: Vec<u32>,
+}
+
+impl Visitor for ObserveTypeOrder {
+    fn visit_type(&mut self, already_visited: &mut HashSet<u32>, ty: &intermediate_repr::Type) {
+        let unique_id = ty.unique_id();
+        if !self.types.iter().any(|t| *t == unique_id) {
+            self.types.push(ty.unique_id())
+        }
+
+        visit_type(self, already_visited, ty)
+    }
+}
+
 pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
-    let mut types = intermediate
+    let mut already_visited = Default::default();
+    let mut visitor = ObserveTypeOrder::default();
+    visitor.visit_type(
+        &mut already_visited,
+        intermediate
+            .extrinsic_metadata
+            .call_ty
+            .borrow()
+            .expect_resolved(),
+    );
+    visitor.visit_type(
+        &mut already_visited,
+        intermediate
+            .extrinsic_metadata
+            .address_ty
+            .borrow()
+            .expect_resolved(),
+    );
+    visitor.visit_type(
+        &mut already_visited,
+        intermediate
+            .extrinsic_metadata
+            .signature_ty
+            .borrow()
+            .expect_resolved(),
+    );
+    intermediate
+        .extrinsic_metadata
+        .signed_extensions
+        .iter()
+        .for_each(|se| {
+            visitor.visit_type(
+                &mut already_visited,
+                se.included_in_extrinsic.borrow().expect_resolved(),
+            );
+            visitor.visit_type(
+                &mut already_visited,
+                se.included_in_signed_data.borrow().expect_resolved(),
+            );
+        });
+
+    let id_to_types = intermediate
         .types
         .into_iter()
-        .filter_map(|t| {
-            t.borrow()
-                .expect_resolved()
-                .as_basic_type()
-                .map(|bt| (t.borrow().expect_resolved().unique_id, bt))
+        .map(|t| {
+            let unique_id = t.borrow().expect_resolved().unique_id();
+            (unique_id, t)
+        })
+        .collect::<HashMap<_, _>>();
+    let final_types = visitor
+        .types
+        .iter()
+        .filter_map(|tid| {
+            id_to_types.get(tid).and_then(|t| {
+                t.borrow()
+                    .expect_resolved()
+                    .as_basic_type()
+                    .map(|_| t.clone())
+            })
+        })
+        .enumerate()
+        .map(|(id, t)| {
+            t.borrow_mut()
+                .expect_resolved_mut()
+                .set_unique_id(id as u32);
+            t
         })
         .collect::<Vec<_>>();
 
-    types.sort_by_key(|t| t.0);
+    assert_eq!(
+        final_types.iter().fold(0, |p, c| {
+            let unique_id = c.borrow().expect_resolved().unique_id();
 
-    let tree_root = MerkleTree::calculate_root(types.iter().map(|(_, t)| t.hash()));
+            if p + 1 == unique_id || p == 0 && unique_id == 0 {
+                c.borrow().expect_resolved().unique_id()
+            } else {
+                panic!("Not sorted")
+            }
+        }),
+        final_types
+            .last()
+            .unwrap()
+            .borrow()
+            .expect_resolved()
+            .unique_id()
+    );
+    panic!("Before {}, after {}, lol {}", id_to_types.len(), final_types.len(), visitor.types.len());
+
+    let tree_root = MerkleTree::calculate_root(
+        final_types
+            .iter()
+            .filter_map(|t| t.borrow().expect_resolved().as_basic_type())
+            .map(|t| t.hash()),
+    );
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,
