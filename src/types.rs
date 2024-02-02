@@ -115,8 +115,6 @@ pub struct TypeDefBitSequence {
 pub struct Type {
     /// The unique path to the type. Can be empty for built-in types
     pub path: Vec<String>,
-    /// The generic type parameters of the type in use. Empty for non generic types
-    pub type_params: Vec<TypeParameter>,
     /// The actual type definition
     pub type_def: TypeDef,
 }
@@ -125,16 +123,6 @@ impl Type {
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
     }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
-pub struct TypeParameter {
-    /// The name of the generic type parameter e.g. "T".
-    pub name: String,
-    /// The concrete type for the type parameter.
-    ///
-    /// `None` if the type parameter is skipped.
-    pub ty: Option<TypeRef>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]

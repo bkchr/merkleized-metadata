@@ -121,8 +121,6 @@ impl TypeDefBitSequence {
 pub struct Type {
     /// The unique path to the type. Can be empty for built-in types
     pub path: Vec<String>,
-    /// The generic type parameters of the type in use. Empty for non generic types
-    pub type_params: Vec<TypeParameter>,
     /// The actual type definition
     pub type_def: TypeDef,
     pub unique_id: RefCell<u32>,
@@ -265,24 +263,8 @@ impl Type {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TypeParameter {
-    /// The name of the generic type parameter e.g. "T".
-    pub name: String,
-    /// The concrete type for the type parameter.
-    ///
-    /// `None` if the type parameter is skipped.
-    pub ty: Option<TypeRef>,
 }
 
-impl TypeParameter {
-    pub fn as_basic_type(&self) -> types::TypeParameter {
-        types::TypeParameter {
-            name: self.name.clone(),
-            ty: self
-                .ty
-                .as_ref()
-                .map(|t| t.borrow().expect_resolved().as_basic_type_ref()),
         }
     }
 }

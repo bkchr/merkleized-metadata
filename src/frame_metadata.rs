@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::intermediate_repr::{
     ExtrinsicMetadata, Field, Intermediate, SignedExtensionMetadata, Type, TypeDef, TypeDefArray,
-    TypeDefBitSequence, TypeParameter, TypeRef, TypeRefInner, Variant,
+    TypeDefBitSequence, TypeRef, TypeRefInner, Variant,
 };
 use frame_metadata::RuntimeMetadata;
 use scale_info::{form::PortableForm, PortableRegistry};
@@ -44,24 +44,6 @@ fn resolve_type(
         .segments
         .iter()
         .map(|s| AsRef::<str>::as_ref(s).to_string())
-        .collect::<Vec<_>>();
-
-    let type_params = ty
-        .ty
-        .type_params
-        .iter()
-        .map(|p| {
-            let name = AsRef::<str>::as_ref(&p.name).to_string();
-            let ty = p.ty.as_ref().map(|t| {
-                if let Some(t) = known_types.get(&t.id) {
-                    return t.clone();
-                }
-
-                resolve_type(t.id, known_types, registry)
-            });
-
-            TypeParameter { name, ty }
-        })
         .collect::<Vec<_>>();
 
     let type_def = match &ty.ty.type_def {
@@ -111,7 +93,6 @@ fn resolve_type(
     let ty = known_types.get(&ty_id).unwrap().clone();
     ty.borrow_mut().resolved(Type {
         path,
-        type_params,
         type_def,
         unique_id: ty_id.into(),
     });
