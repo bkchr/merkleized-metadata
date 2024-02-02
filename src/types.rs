@@ -102,7 +102,7 @@ pub enum Primitives {
     #[codec(index = 19)]
     CompactU128,
     #[codec(index = 20)]
-    Nothing,
+    Void,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]

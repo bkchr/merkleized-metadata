@@ -123,7 +123,7 @@ pub struct Type {
     pub path: Vec<String>,
     /// The actual type definition
     pub type_def: TypeDef,
-    pub unique_id: RefCell<u32>,
+    pub unique_id: u32,
 }
 
 impl Type {
@@ -154,7 +154,6 @@ impl Type {
 
         Some(types::Type {
             path: self.path.clone(),
-            type_params: self.type_params.iter().map(|t| t.as_basic_type()).collect(),
             type_def,
         })
     }
@@ -196,18 +195,16 @@ impl Type {
                         p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
                     }
                 } else {
-                    types::Primitives::Nothing
+                    types::Primitives::Void
                 };
 
                 types::TypeRef::Primitive(res)
             }
             TypeDef::Composite(f) if f.is_empty() => {
-                types::TypeRef::Primitive(types::Primitives::Nothing)
+                types::TypeRef::Primitive(types::Primitives::Void)
             }
-            TypeDef::Tuple(t) if t.is_empty() => {
-                types::TypeRef::Primitive(types::Primitives::Nothing)
-            }
-            _ => types::TypeRef::Ref((*self.unique_id.borrow()).into()),
+            TypeDef::Tuple(t) if t.is_empty() => types::TypeRef::Primitive(types::Primitives::Void),
+            _ => types::TypeRef::Ref(self.unique_id.into()),
         }
     }
 

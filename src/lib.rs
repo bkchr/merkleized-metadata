@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::types::MerkleTree;
 use codec::Encode;
 use intermediate_repr::Intermediate;
@@ -9,7 +7,7 @@ pub mod frame_metadata;
 mod intermediate_repr;
 mod types;
 
-pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDigest {
+pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
     let mut types = intermediate
         .types
         .into_iter()
@@ -17,13 +15,13 @@ pub fn calculate_metadata_digest(mut intermediate: Intermediate) -> MetadataDige
             t.borrow()
                 .expect_resolved()
                 .as_basic_type()
-                .map(|bt| (*t.borrow().expect_resolved().unique_id.borrow(), bt))
+                .map(|bt| (t.borrow().expect_resolved().unique_id, bt))
         })
         .collect::<Vec<_>>();
 
     types.sort_by_key(|t| t.0);
 
-    let tree_root = MerkleTree::calculate_root(types.iter().map(|(i, t)| t.hash()));
+    let tree_root = MerkleTree::calculate_root(types.iter().map(|(_, t)| t.hash()));
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -63,7 +61,7 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0x1c9360ef5514a5023efc2c8fa70f79823a4de08906d8aea785d030c9dd4c2bb3",
+            "0x8ec33d87dc60c5631dd7655fa88e39018d820ed9c95a88e79f70e406ea2c843a",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }
