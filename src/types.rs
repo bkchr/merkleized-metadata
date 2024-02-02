@@ -46,7 +46,7 @@ pub enum TypeRef {
     #[codec(index = 19)]
     CompactU128,
     #[codec(index = 20)]
-    Void,
+    CompactVoid,
     #[codec(index = 21)]
     ById(Compact<u32>),
 }

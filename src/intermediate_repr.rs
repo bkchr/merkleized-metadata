@@ -154,11 +154,7 @@ impl Type {
     }
 
     pub fn as_basic_type(&self) -> Option<types::Type> {
-        let mut collector = CollectPrimitives::default();
-        collector.visit_type(&mut Default::default(), self);
-
         let type_def = match &self.type_def {
-            TypeDef::Composite(_) | TypeDef::Tuple(_) if collector.found.is_empty() => return None,
             TypeDef::Compact(_) | TypeDef::Primitive(_) => return None,
             TypeDef::Enumeration(v) => {
                 let mut variants = v.clone();
@@ -223,11 +219,8 @@ impl Type {
                         p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
                     }
                 } else {
-                    types::TypeRef::Void
+                    types::TypeRef::CompactVoid
                 }
-            }
-            TypeDef::Tuple(_) | TypeDef::Composite(_) if collector.found.is_empty() => {
-                types::TypeRef::Void
             }
             _ => types::TypeRef::ById(self.unique_id().into()),
         }
