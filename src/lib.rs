@@ -97,25 +97,6 @@ pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(
-        final_types.iter().fold(0, |p, c| {
-            let unique_id = c.borrow().expect_resolved().unique_id();
-
-            if p + 1 == unique_id || p == 0 && unique_id == 0 {
-                c.borrow().expect_resolved().unique_id()
-            } else {
-                panic!("Not sorted")
-            }
-        }),
-        final_types
-            .last()
-            .unwrap()
-            .borrow()
-            .expect_resolved()
-            .unique_id()
-    );
-    panic!("Before {}, after {}, lol {}", id_to_types.len(), final_types.len(), visitor.types.len());
-
     let tree_root = MerkleTree::calculate_root(
         final_types
             .iter()
@@ -161,7 +142,7 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0x29edfbe83b9f9120402b28e9beb2a9449086118628d4735d83daa25353e171f0",
+            "0x2702e1dc64cb4c6f15ed87b65124af027b63305c7d847d5fb1d5505853869895",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }

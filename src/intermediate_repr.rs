@@ -193,45 +193,43 @@ impl Type {
         collector.visit_type(&mut Default::default(), self);
 
         match &self.type_def {
-            TypeDef::Primitive(p) => types::TypeRef::Primitive(match p {
-                scale_info::TypeDefPrimitive::Bool => types::Primitives::Bool,
-                scale_info::TypeDefPrimitive::Char => types::Primitives::Char,
-                scale_info::TypeDefPrimitive::Str => types::Primitives::Str,
-                scale_info::TypeDefPrimitive::U8 => types::Primitives::U8,
-                scale_info::TypeDefPrimitive::U16 => types::Primitives::U16,
-                scale_info::TypeDefPrimitive::U32 => types::Primitives::U32,
-                scale_info::TypeDefPrimitive::U64 => types::Primitives::U64,
-                scale_info::TypeDefPrimitive::U128 => types::Primitives::U128,
-                scale_info::TypeDefPrimitive::U256 => types::Primitives::U256,
-                scale_info::TypeDefPrimitive::I8 => types::Primitives::I8,
-                scale_info::TypeDefPrimitive::I16 => types::Primitives::I16,
-                scale_info::TypeDefPrimitive::I32 => types::Primitives::I32,
-                scale_info::TypeDefPrimitive::I64 => types::Primitives::I64,
-                scale_info::TypeDefPrimitive::I128 => types::Primitives::I128,
-                scale_info::TypeDefPrimitive::I256 => types::Primitives::I256,
-            }),
+            TypeDef::Primitive(p) => match p {
+                scale_info::TypeDefPrimitive::Bool => types::TypeRef::Bool,
+                scale_info::TypeDefPrimitive::Char => types::TypeRef::Char,
+                scale_info::TypeDefPrimitive::Str => types::TypeRef::Str,
+                scale_info::TypeDefPrimitive::U8 => types::TypeRef::U8,
+                scale_info::TypeDefPrimitive::U16 => types::TypeRef::U16,
+                scale_info::TypeDefPrimitive::U32 => types::TypeRef::U32,
+                scale_info::TypeDefPrimitive::U64 => types::TypeRef::U64,
+                scale_info::TypeDefPrimitive::U128 => types::TypeRef::U128,
+                scale_info::TypeDefPrimitive::U256 => types::TypeRef::U256,
+                scale_info::TypeDefPrimitive::I8 => types::TypeRef::I8,
+                scale_info::TypeDefPrimitive::I16 => types::TypeRef::I16,
+                scale_info::TypeDefPrimitive::I32 => types::TypeRef::I32,
+                scale_info::TypeDefPrimitive::I64 => types::TypeRef::I64,
+                scale_info::TypeDefPrimitive::I128 => types::TypeRef::I128,
+                scale_info::TypeDefPrimitive::I256 => types::TypeRef::I256,
+            },
             TypeDef::Compact(_) => {
-                let res = if collector.found.len() > 1 {
+                if collector.found.len() > 1 {
                     panic!("Unexpected: {:?}", collector.found)
                 } else if let Some(found) = collector.found.first() {
                     match found {
-                        scale_info::TypeDefPrimitive::U8 => types::Primitives::CompactU8,
-                        scale_info::TypeDefPrimitive::U16 => types::Primitives::CompactU16,
-                        scale_info::TypeDefPrimitive::U32 => types::Primitives::CompactU32,
-                        scale_info::TypeDefPrimitive::U64 => types::Primitives::CompactU64,
-                        scale_info::TypeDefPrimitive::U128 => types::Primitives::CompactU128,
+                        scale_info::TypeDefPrimitive::U8 => types::TypeRef::CompactU8,
+                        scale_info::TypeDefPrimitive::U16 => types::TypeRef::CompactU16,
+                        scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
+                        scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
+                        scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
                         p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
                     }
                 } else {
-                    types::Primitives::Void
-                };
-
-                types::TypeRef::Primitive(res)
+                    types::TypeRef::Void
+                }
             }
             TypeDef::Tuple(_) | TypeDef::Composite(_) if collector.found.is_empty() => {
-                types::TypeRef::Primitive(types::Primitives::Void)
+                types::TypeRef::Void
             }
-            _ => types::TypeRef::Ref(self.unique_id().into()),
+            _ => types::TypeRef::ById(self.unique_id().into()),
         }
     }
 }

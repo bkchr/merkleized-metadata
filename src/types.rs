@@ -5,8 +5,50 @@ use codec::{Compact, Encode};
 /// A reference to a type in the registry.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub enum TypeRef {
-    Ref(Compact<u32>),
-    Primitive(Primitives),
+    #[codec(index = 0)]
+    Bool,
+    #[codec(index = 1)]
+    Char,
+    #[codec(index = 2)]
+    Str,
+    #[codec(index = 3)]
+    U8,
+    #[codec(index = 4)]
+    U16,
+    #[codec(index = 5)]
+    U32,
+    #[codec(index = 6)]
+    U64,
+    #[codec(index = 7)]
+    U128,
+    #[codec(index = 8)]
+    U256,
+    #[codec(index = 9)]
+    I8,
+    #[codec(index = 10)]
+    I16,
+    #[codec(index = 11)]
+    I32,
+    #[codec(index = 12)]
+    I64,
+    #[codec(index = 13)]
+    I128,
+    #[codec(index = 14)]
+    I256,
+    #[codec(index = 15)]
+    CompactU8,
+    #[codec(index = 16)]
+    CompactU16,
+    #[codec(index = 17)]
+    CompactU32,
+    #[codec(index = 18)]
+    CompactU64,
+    #[codec(index = 19)]
+    CompactU128,
+    #[codec(index = 20)]
+    Void,
+    #[codec(index = 21)]
+    ById(Compact<u32>),
 }
 
 pub type Hash = [u8; 32];
@@ -57,52 +99,6 @@ impl TypeDefVariant {
 pub struct TypeDefArray {
     pub len: u32,
     pub type_param: TypeRef,
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]
-pub enum Primitives {
-    #[codec(index = 0)]
-    Bool,
-    #[codec(index = 1)]
-    Char,
-    #[codec(index = 2)]
-    Str,
-    #[codec(index = 3)]
-    U8,
-    #[codec(index = 4)]
-    U16,
-    #[codec(index = 5)]
-    U32,
-    #[codec(index = 6)]
-    U64,
-    #[codec(index = 7)]
-    U128,
-    #[codec(index = 8)]
-    U256,
-    #[codec(index = 9)]
-    I8,
-    #[codec(index = 10)]
-    I16,
-    #[codec(index = 11)]
-    I32,
-    #[codec(index = 12)]
-    I64,
-    #[codec(index = 13)]
-    I128,
-    #[codec(index = 14)]
-    I256,
-    #[codec(index = 15)]
-    CompactU8,
-    #[codec(index = 16)]
-    CompactU16,
-    #[codec(index = 17)]
-    CompactU32,
-    #[codec(index = 18)]
-    CompactU64,
-    #[codec(index = 19)]
-    CompactU128,
-    #[codec(index = 20)]
-    Void,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]
