@@ -115,11 +115,15 @@ impl TypeDefBitSequence {
                 .borrow()
                 .expect_resolved()
                 .as_basic_type_ref(),
-            bit_order_type: self
+            least_significant_bit_first: self
                 .bit_order_type
                 .borrow()
                 .expect_resolved()
-                .as_basic_type_ref(),
+                .path
+                .iter()
+                .find(|p| *p == "Lsb0" || *p == "Msb0")
+                .expect("`bit_order_type` is either `Lsb0` or `Msb0`")
+                == "Lsb0",
         }
     }
 }
