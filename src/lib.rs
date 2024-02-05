@@ -8,9 +8,20 @@ mod intermediate_repr;
 mod types;
 
 pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
+    let mut types = intermediate
+        .types
+        .iter()
+        .filter(|ty| ty.borrow().expect_resolved().as_basic_type().is_some())
+        .collect::<Vec<_>>();
+    types.sort_by_key(|ty| ty.borrow().expect_resolved().unique_id());
+    types.iter().enumerate().for_each(|(id, ty)| {
+        ty.borrow_mut()
+            .expect_resolved_mut()
+            .set_unique_id(id as u32)
+    });
+
     let tree_root = MerkleTree::calculate_root(
-        intermediate
-            .types
+        types
             .iter()
             .filter_map(|t| t.borrow().expect_resolved().as_basic_type())
             .map(|t| t.hash()),
@@ -54,7 +65,7 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0xf2831386ed5442ea85d40959925b6b22527e9ccc6f27e3f1d10ee9ef748f5a99",
+            "0x26aa726f94f92976a3c4bc2d4f866cb7563d4ca1d10bb9548fe6783ef4be64ed",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }
