@@ -65,7 +65,7 @@ mod tests {
         let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
 
         assert_eq!(
-            "0x26aa726f94f92976a3c4bc2d4f866cb7563d4ca1d10bb9548fe6783ef4be64ed",
+            "0x5d48d875f4c62cd65045e6ab4ec3e23bb261e5bfcca2e4ec4cef4f27683fcaa1",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }

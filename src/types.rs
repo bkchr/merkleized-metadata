@@ -171,10 +171,7 @@ impl MerkleTree {
     }
 
     pub fn calculate_root(leaves: impl IntoIterator<Item = Hash>) -> Hash {
-        let mut leaves = leaves
-            .into_iter()
-            .map(MerkleTree::Leaf)
-            .collect::<VecDeque<_>>();
+        let mut leaves = leaves.into_iter().collect::<VecDeque<_>>();
 
         let mut nodes = VecDeque::new();
 
@@ -186,18 +183,12 @@ impl MerkleTree {
                 .pop_front()
                 .expect("We have more than one element; qed");
 
-            nodes.push_back(MerkleTree::Node {
-                left: left.hash(),
-                right: right.hash(),
-            })
+            nodes.push_back(Hash::from(blake3::hash(&(left, right).encode())));
         }
 
         if let Some(last) = leaves.pop_front() {
             if let Some(back) = nodes.back_mut() {
-                *back = MerkleTree::Node {
-                    left: back.hash(),
-                    right: last.hash(),
-                };
+                *back = Hash::from(blake3::hash(&(back.clone(), last).encode()));
             } else {
                 nodes.push_back(last);
             }
@@ -211,14 +202,9 @@ impl MerkleTree {
                 .pop_front()
                 .expect("We have more than one element; qed");
 
-            nodes.push_back(MerkleTree::Node {
-                left: left.hash(),
-                right: right.hash(),
-            })
+            nodes.push_back(blake3::hash(&(Hash::from(left), right).encode()).into());
         }
 
-        nodes
-            .pop_back()
-            .map_or_else(|| Default::default(), |n| n.hash())
+        nodes.pop_back().unwrap_or_default()
     }
 }
