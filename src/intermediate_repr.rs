@@ -73,8 +73,8 @@ pub struct Variant {
 }
 
 impl Variant {
-    pub fn as_basic_type(&self) -> types::TypeDefVariant {
-        types::TypeDefVariant {
+    pub fn as_basic_type(&self) -> types::EnumerationVariant {
+        types::EnumerationVariant {
             name: self.name.clone(),
             fields: self.fields.iter().map(|f| f.as_basic_type()).collect(),
             index: self.index,
@@ -157,15 +157,20 @@ impl Type {
         *self.unique_id.borrow_mut() = id;
     }
 
-    pub fn as_basic_type(&self) -> Option<types::Type> {
+    pub fn as_basic_type(&self) -> Vec<types::Type> {
         let type_def = match &self.type_def {
-            TypeDef::Compact(_) | TypeDef::Primitive(_) => return None,
+            TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
             TypeDef::Enumeration(v) => {
                 let mut variants = v.clone();
                 variants.sort_by_key(|v| v.index);
-                let variant_root_hash =
-                    MerkleTree::calculate_root(variants.iter().map(|v| v.as_basic_type().hash()));
-                types::TypeDef::Enumeration(variant_root_hash)
+
+                return variants
+                    .iter()
+                    .map(|v| types::Type {
+                        path: self.path.clone(),
+                        type_def: types::TypeDef::Enumeration(v.as_basic_type()),
+                    })
+                    .collect::<Vec<_>>();
             }
             TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type()),
             TypeDef::Composite(c) => {
@@ -182,10 +187,10 @@ impl Type {
             TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
         };
 
-        Some(types::Type {
+        vec![types::Type {
             path: self.path.clone(),
             type_def,
-        })
+        }]
     }
 
     pub fn as_basic_type_ref(&self) -> types::TypeRef {

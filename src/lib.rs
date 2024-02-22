@@ -11,7 +11,7 @@ pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
     let mut types = intermediate
         .types
         .iter()
-        .filter(|ty| ty.borrow().expect_resolved().as_basic_type().is_some())
+        .filter(|ty| !ty.borrow().expect_resolved().as_basic_type().is_empty())
         .collect::<Vec<_>>();
     types.sort_by_key(|ty| ty.borrow().expect_resolved().unique_id());
     types.iter().enumerate().for_each(|(id, ty)| {
@@ -23,7 +23,7 @@ pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
     let tree_root = MerkleTree::calculate_root(
         types
             .iter()
-            .filter_map(|t| t.borrow().expect_resolved().as_basic_type())
+            .flat_map(|t| t.borrow().expect_resolved().as_basic_type())
             .map(|t| t.hash()),
     );
 

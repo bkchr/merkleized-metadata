@@ -60,7 +60,7 @@ pub enum TypeDef {
     Composite(Vec<Field>),
     /// An enumeration.
     #[codec(index = 1)]
-    Enumeration(Hash),
+    Enumeration(EnumerationVariant),
     /// A sequence type with runtime known length.
     #[codec(index = 2)]
     Sequence(TypeRef),
@@ -83,13 +83,13 @@ pub struct Field {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
-pub struct TypeDefVariant {
+pub struct EnumerationVariant {
     pub name: String,
     pub fields: Vec<Field>,
     pub index: u8,
 }
 
-impl TypeDefVariant {
+impl EnumerationVariant {
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
     }
