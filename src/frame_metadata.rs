@@ -7,6 +7,36 @@ use crate::intermediate_repr::{
 use frame_metadata::RuntimeMetadata;
 use scale_info::{form::PortableForm, PortableRegistry};
 
+
+/// A reference to a type in the registry.
+pub type TypeRef = Rc<RefCell<TypeRefInner>>;
+
+#[derive(Clone, Debug)]
+pub enum TypeRefInner {
+    Unresolved,
+    Resolved(Type),
+}
+
+impl TypeRefInner {
+    pub fn expect_resolved(&self) -> &Type {
+        match self {
+            Self::Resolved(t) => t,
+            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+        }
+    }
+
+    pub fn expect_resolved_mut(&mut self) -> &mut Type {
+        match self {
+            Self::Resolved(t) => t,
+            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+        }
+    }
+
+    pub fn resolved(&mut self, ty: Type) {
+        *self = Self::Resolved(ty);
+    }
+}
+
 fn convert_field(
     field: &scale_info::Field<PortableForm>,
     known_types: &mut BTreeMap<u32, TypeRef>,

@@ -1,5 +1,7 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
+use scale_info::{Field, Type, TypeDef, TypeDefArray, TypeDefBitSequence, Variant};
+
 use crate::types;
 
 pub struct Intermediate {
@@ -7,108 +9,163 @@ pub struct Intermediate {
     pub extrinsic_metadata: ExtrinsicMetadata,
 }
 
-/// A reference to a type in the registry.
-pub type TypeRef = Rc<RefCell<TypeRefInner>>;
-
-#[derive(Clone, Debug)]
-pub enum TypeRefInner {
-    Unresolved,
-    Resolved(Type),
+pub trait AsBasicTypeRef {
+    fn as_basic_type_ref(&self) -> types::TypeRef;
 }
 
-impl TypeRefInner {
-    pub fn expect_resolved(&self) -> &Type {
-        match self {
-            Self::Resolved(t) => t,
-            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+pub trait AsBasicType {
+    type BasicType;
+
+    fn as_basic_type(&self) -> Self::BasicType;
+}
+
+pub trait IsBasicType {
+    fn is_basic_type(&self) -> bool;
+}
+
+impl AsBasicTypeRef for Type {
+    fn as_basic_type_ref(&self) -> types::TypeRef {
+        let mut collector = CollectPrimitives::default();
+        collector.visit_type(&mut Default::default(), self);
+
+        match &self.type_def {
+            TypeDef::Primitive(p) => match p {
+                scale_info::TypeDefPrimitive::Bool => types::TypeRef::Bool,
+                scale_info::TypeDefPrimitive::Char => types::TypeRef::Char,
+                scale_info::TypeDefPrimitive::Str => types::TypeRef::Str,
+                scale_info::TypeDefPrimitive::U8 => types::TypeRef::U8,
+                scale_info::TypeDefPrimitive::U16 => types::TypeRef::U16,
+                scale_info::TypeDefPrimitive::U32 => types::TypeRef::U32,
+                scale_info::TypeDefPrimitive::U64 => types::TypeRef::U64,
+                scale_info::TypeDefPrimitive::U128 => types::TypeRef::U128,
+                scale_info::TypeDefPrimitive::U256 => types::TypeRef::U256,
+                scale_info::TypeDefPrimitive::I8 => types::TypeRef::I8,
+                scale_info::TypeDefPrimitive::I16 => types::TypeRef::I16,
+                scale_info::TypeDefPrimitive::I32 => types::TypeRef::I32,
+                scale_info::TypeDefPrimitive::I64 => types::TypeRef::I64,
+                scale_info::TypeDefPrimitive::I128 => types::TypeRef::I128,
+                scale_info::TypeDefPrimitive::I256 => types::TypeRef::I256,
+            },
+            TypeDef::Compact(_) => {
+                if collector.found.len() > 1 {
+                    panic!("Unexpected: {:?}", collector.found)
+                } else if let Some(found) = collector.found.first() {
+                    match found {
+                        scale_info::TypeDefPrimitive::U8 => types::TypeRef::CompactU8,
+                        scale_info::TypeDefPrimitive::U16 => types::TypeRef::CompactU16,
+                        scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
+                        scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
+                        scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
+                        p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
+                    }
+                } else {
+                    types::TypeRef::CompactVoid
+                }
+            }
+            _ => types::TypeRef::ById(self.unique_id().into()),
         }
     }
+}
 
-    pub fn expect_resolved_mut(&mut self) -> &mut Type {
-        match self {
-            Self::Resolved(t) => t,
-            Self::Unresolved => panic!("Expected the `TypeRef` to be resolved"),
+impl AsBasicType for Type {
+    type BasicType = Vec<types::Type>;
+
+    fn as_basic_type(&self) -> Self::BasicType {
+        let type_def = match &self.type_def {
+            TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
+            TypeDef::Enumeration(v) => {
+                let mut variants = v.clone();
+                variants.sort_by_key(|v| v.index);
+
+                return variants
+                    .iter()
+                    .map(|v| types::Type {
+                        path: self.path.clone(),
+                        type_def: types::TypeDef::Enumeration(v.as_basic_type()),
+                    })
+                    .collect::<Vec<_>>();
+            }
+            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type()),
+            TypeDef::Composite(c) => {
+                types::TypeDef::Composite(c.iter().map(|f| f.as_basic_type()).collect())
+            }
+            TypeDef::Sequence(s) => {
+                types::TypeDef::Sequence(s.borrow().expect_resolved().as_basic_type_ref())
+            }
+            TypeDef::Tuple(t) => types::TypeDef::Tuple(
+                t.iter()
+                    .map(|t| t.borrow().expect_resolved().as_basic_type_ref())
+                    .collect(),
+            ),
+            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
+        };
+
+        vec![types::Type {
+            path: self.path.clone(),
+            type_def,
+        }]
+    }
+}
+
+impl IsBasicType for Type {
+    fn is_basic_type(&self) -> bool {
+        match self.type_def {
+            TypeDef::Compact(_) | TypeDef::Primitive(_) => false,
+            _ => true,
         }
     }
-
-    pub fn resolved(&mut self, ty: Type) {
-        *self = Self::Resolved(ty);
-    }
 }
 
-#[derive(Clone, Debug)]
-pub enum TypeDef {
-    Composite(Vec<Field>),
-    Enumeration(Vec<Variant>),
-    Sequence(TypeRef),
-    Array(TypeDefArray),
-    Tuple(Vec<TypeRef>),
-    Primitive(scale_info::TypeDefPrimitive),
-    Compact(TypeRef),
-    BitSequence(TypeDefBitSequence),
-}
+impl AsBasicType for Field {
+    type BasicType = types::Field;
 
-#[derive(Clone, Debug)]
-pub struct Field {
-    pub name: Option<String>,
-    pub ty: TypeRef,
-    pub type_name: Option<String>,
-}
-
-impl Field {
-    pub fn as_basic_type(&self) -> types::Field {
+    fn as_basic_type(&self) -> Self::BasicType {
         types::Field {
-            name: self.name.clone(),
-            ty: self.ty.borrow().expect_resolved().as_basic_type_ref(),
-            type_name: self.type_name.clone(),
+            name: self
+                .name
+                .as_ref()
+                .map(|n| AsRef::<str>::as_ref(n).to_string()),
+            ty: self.ty.as_basic_type_ref(),
+            type_name: self
+                .type_name
+                .as_ref()
+                .map(|n| AsRef::<str>::as_ref(n).to_string()),
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Variant {
-    pub name: String,
-    pub fields: Vec<Field>,
-    pub index: u8,
-}
+impl AsBasicType for Variant {
+    type BasicType = types::EnumerationVariant;
 
-impl Variant {
-    pub fn as_basic_type(&self) -> types::EnumerationVariant {
+    fn as_basic_type(&self) -> types::EnumerationVariant {
         types::EnumerationVariant {
-            name: self.name.clone(),
+            name: self
+                .name
+                .as_ref()
+                .map(|n| AsRef::<str>::as_ref(n).to_string()),
             fields: self.fields.iter().map(|f| f.as_basic_type()).collect(),
             index: self.index,
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TypeDefArray {
-    pub len: u32,
-    pub type_param: TypeRef,
-}
+impl AsBasicType for TypeDefArray {
+    type BasicType = types::TypeDefArray;
 
-impl TypeDefArray {
-    pub fn as_basic_type(&self) -> types::TypeDefArray {
+    fn as_basic_type(&self) -> types::TypeDefArray {
         types::TypeDefArray {
             len: self.len,
             type_param: self
                 .type_param
-                .borrow()
-                .expect_resolved()
                 .as_basic_type_ref(),
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TypeDefBitSequence {
-    pub bit_store_type: TypeRef,
-    pub bit_order_type: TypeRef,
-}
+impl AsBasicType for TypeDefBitSequence {
+    type BasicType = types::TypeDefBitSequence;
 
-impl TypeDefBitSequence {
-    pub fn as_basic_type(&self) -> types::TypeDefBitSequence {
+    fn as_basic_type(&self) -> types::TypeDefBitSequence {
         types::TypeDefBitSequence {
             bit_store_type: self
                 .bit_store_type
@@ -137,15 +194,6 @@ impl Visitor for CollectPrimitives {
     fn visit_primitive(&mut self, primitive: &scale_info::TypeDefPrimitive) {
         self.found.push(primitive.clone());
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct Type {
-    /// The unique path to the type. Can be empty for built-in types
-    pub path: Vec<String>,
-    /// The actual type definition
-    pub type_def: TypeDef,
-    pub unique_id: RefCell<u32>,
 }
 
 impl Type {
