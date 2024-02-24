@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
-use crate::types::{self, MerkleTree};
+use crate::types;
 
 pub struct Intermediate {
     pub types: Vec<TypeRef>,
