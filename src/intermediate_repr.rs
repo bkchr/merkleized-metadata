@@ -1,8 +1,18 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+    rc::Rc,
+};
 
-use scale_info::{Field, Type, TypeDef, TypeDefArray, TypeDefBitSequence, Variant};
+use scale_info::{
+    Field, Type, TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
+};
 
 use crate::types;
+
+pub struct FrameIdToId(BTreeMap<u32, u32>);
+
+pub type TypeRef = u32;
 
 pub struct Intermediate {
     pub types: Vec<TypeRef>,
@@ -10,7 +20,7 @@ pub struct Intermediate {
 }
 
 pub trait AsBasicTypeRef {
-    fn as_basic_type_ref(&self) -> types::TypeRef;
+    fn as_basic_type_ref(&self, frame_id: u32, frame_id_to_id: &FrameIdToId) -> types::TypeRef;
 }
 
 pub trait AsBasicType {
@@ -24,7 +34,7 @@ pub trait IsBasicType {
 }
 
 impl AsBasicTypeRef for Type {
-    fn as_basic_type_ref(&self) -> types::TypeRef {
+    fn as_basic_type_ref(&self, frame_id: u32, frame_id_to_id: &FrameIdToId) -> types::TypeRef {
         let mut collector = CollectPrimitives::default();
         collector.visit_type(&mut Default::default(), self);
 
@@ -62,7 +72,7 @@ impl AsBasicTypeRef for Type {
                     types::TypeRef::CompactVoid
                 }
             }
-            _ => types::TypeRef::ById(self.unique_id().into()),
+            _ => types::TypeRef::ById(frame_id_to_id.0.get(&frame_id).unwrap().into()),
         }
     }
 }
@@ -71,39 +81,39 @@ impl AsBasicType for Type {
     type BasicType = Vec<types::Type>;
 
     fn as_basic_type(&self) -> Self::BasicType {
+        let path = self
+            .path
+            .segments
+            .iter()
+            .map(|s| AsRef::<str>::as_ref(s).to_string())
+            .collect();
+
         let type_def = match &self.type_def {
             TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
-            TypeDef::Enumeration(v) => {
-                let mut variants = v.clone();
+            TypeDef::Variant(v) => {
+                let mut variants = v.variants.clone();
                 variants.sort_by_key(|v| v.index);
 
                 return variants
                     .iter()
                     .map(|v| types::Type {
-                        path: self.path.clone(),
+                        path,
                         type_def: types::TypeDef::Enumeration(v.as_basic_type()),
                     })
                     .collect::<Vec<_>>();
             }
             TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type()),
             TypeDef::Composite(c) => {
-                types::TypeDef::Composite(c.iter().map(|f| f.as_basic_type()).collect())
+                types::TypeDef::Composite(c.fields.iter().map(|f| f.as_basic_type()).collect())
             }
-            TypeDef::Sequence(s) => {
-                types::TypeDef::Sequence(s.borrow().expect_resolved().as_basic_type_ref())
+            TypeDef::Sequence(s) => types::TypeDef::Sequence(s.type_param.as_basic_type_ref()),
+            TypeDef::Tuple(t) => {
+                types::TypeDef::Tuple(t.fields.iter().map(|t| t.as_basic_type_ref()).collect())
             }
-            TypeDef::Tuple(t) => types::TypeDef::Tuple(
-                t.iter()
-                    .map(|t| t.borrow().expect_resolved().as_basic_type_ref())
-                    .collect(),
-            ),
             TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
         };
 
-        vec![types::Type {
-            path: self.path.clone(),
-            type_def,
-        }]
+        vec![types::Type { path, type_def }]
     }
 }
 
@@ -155,9 +165,7 @@ impl AsBasicType for TypeDefArray {
     fn as_basic_type(&self) -> types::TypeDefArray {
         types::TypeDefArray {
             len: self.len,
-            type_param: self
-                .type_param
-                .as_basic_type_ref(),
+            type_param: self.type_param.as_basic_type_ref(),
         }
     }
 }
@@ -167,15 +175,9 @@ impl AsBasicType for TypeDefBitSequence {
 
     fn as_basic_type(&self) -> types::TypeDefBitSequence {
         types::TypeDefBitSequence {
-            bit_store_type: self
-                .bit_store_type
-                .borrow()
-                .expect_resolved()
-                .as_basic_type_ref(),
+            bit_store_type: self.bit_store_type.as_basic_type_ref(),
             least_significant_bit_first: self
                 .bit_order_type
-                .borrow()
-                .expect_resolved()
                 .path
                 .iter()
                 .find(|p| *p == "Lsb0" || *p == "Msb0")
@@ -187,100 +189,12 @@ impl AsBasicType for TypeDefBitSequence {
 
 #[derive(Default)]
 struct CollectPrimitives {
-    found: Vec<scale_info::TypeDefPrimitive>,
+    found: Vec<TypeDefPrimitive>,
 }
 
 impl Visitor for CollectPrimitives {
     fn visit_primitive(&mut self, primitive: &scale_info::TypeDefPrimitive) {
         self.found.push(primitive.clone());
-    }
-}
-
-impl Type {
-    pub fn unique_id(&self) -> u32 {
-        *self.unique_id.borrow()
-    }
-
-    pub fn set_unique_id(&mut self, id: u32) {
-        *self.unique_id.borrow_mut() = id;
-    }
-
-    pub fn as_basic_type(&self) -> Vec<types::Type> {
-        let type_def = match &self.type_def {
-            TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
-            TypeDef::Enumeration(v) => {
-                let mut variants = v.clone();
-                variants.sort_by_key(|v| v.index);
-
-                return variants
-                    .iter()
-                    .map(|v| types::Type {
-                        path: self.path.clone(),
-                        type_def: types::TypeDef::Enumeration(v.as_basic_type()),
-                    })
-                    .collect::<Vec<_>>();
-            }
-            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type()),
-            TypeDef::Composite(c) => {
-                types::TypeDef::Composite(c.iter().map(|f| f.as_basic_type()).collect())
-            }
-            TypeDef::Sequence(s) => {
-                types::TypeDef::Sequence(s.borrow().expect_resolved().as_basic_type_ref())
-            }
-            TypeDef::Tuple(t) => types::TypeDef::Tuple(
-                t.iter()
-                    .map(|t| t.borrow().expect_resolved().as_basic_type_ref())
-                    .collect(),
-            ),
-            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type()),
-        };
-
-        vec![types::Type {
-            path: self.path.clone(),
-            type_def,
-        }]
-    }
-
-    pub fn as_basic_type_ref(&self) -> types::TypeRef {
-        let mut collector = CollectPrimitives::default();
-        collector.visit_type(&mut Default::default(), self);
-
-        match &self.type_def {
-            TypeDef::Primitive(p) => match p {
-                scale_info::TypeDefPrimitive::Bool => types::TypeRef::Bool,
-                scale_info::TypeDefPrimitive::Char => types::TypeRef::Char,
-                scale_info::TypeDefPrimitive::Str => types::TypeRef::Str,
-                scale_info::TypeDefPrimitive::U8 => types::TypeRef::U8,
-                scale_info::TypeDefPrimitive::U16 => types::TypeRef::U16,
-                scale_info::TypeDefPrimitive::U32 => types::TypeRef::U32,
-                scale_info::TypeDefPrimitive::U64 => types::TypeRef::U64,
-                scale_info::TypeDefPrimitive::U128 => types::TypeRef::U128,
-                scale_info::TypeDefPrimitive::U256 => types::TypeRef::U256,
-                scale_info::TypeDefPrimitive::I8 => types::TypeRef::I8,
-                scale_info::TypeDefPrimitive::I16 => types::TypeRef::I16,
-                scale_info::TypeDefPrimitive::I32 => types::TypeRef::I32,
-                scale_info::TypeDefPrimitive::I64 => types::TypeRef::I64,
-                scale_info::TypeDefPrimitive::I128 => types::TypeRef::I128,
-                scale_info::TypeDefPrimitive::I256 => types::TypeRef::I256,
-            },
-            TypeDef::Compact(_) => {
-                if collector.found.len() > 1 {
-                    panic!("Unexpected: {:?}", collector.found)
-                } else if let Some(found) = collector.found.first() {
-                    match found {
-                        scale_info::TypeDefPrimitive::U8 => types::TypeRef::CompactU8,
-                        scale_info::TypeDefPrimitive::U16 => types::TypeRef::CompactU16,
-                        scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
-                        scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
-                        scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
-                        p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
-                    }
-                } else {
-                    types::TypeRef::CompactVoid
-                }
-            }
-            _ => types::TypeRef::ById(self.unique_id().into()),
-        }
     }
 }
 
