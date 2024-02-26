@@ -89,12 +89,6 @@ pub struct EnumerationVariant {
     pub index: u8,
 }
 
-impl EnumerationVariant {
-    pub fn hash(&self) -> Hash {
-        blake3::hash(&self.encode()).into()
-    }
-}
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub struct TypeDefArray {
     pub len: u32,
@@ -130,6 +124,12 @@ pub struct ExtrinsicMetadata {
     pub signature_ty: TypeRef,
     /// The signed extensions in the order they appear in the extrinsic.
     pub signed_extensions: Vec<SignedExtensionMetadata>,
+}
+
+impl ExtrinsicMetadata {
+    pub fn hash(&self) -> Hash {
+        blake3::hash(&self.encode()).into()
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]

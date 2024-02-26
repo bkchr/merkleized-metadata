@@ -1,24 +1,40 @@
-use codec::Encode;
+use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
 use types::MetadataDigest;
 
 mod from_frame_metadata;
 mod types;
 
-pub fn calculate_metadata_digest(prepared: FrameMetadataPrepared) -> MetadataDigest {
+/// Extra information that is required to generate the [`MetadataDigest`].
+#[derive(Debug, Clone)]
+pub struct ExtraInfo {
+    pub spec_version: u32,
+    pub spec_name: String,
+    pub base58_prefix: u16,
+    pub decimals: u8,
+    pub token_symbol: String,
+}
+
+/// Generate the [`MetadataDigest`].
+pub fn generate_metadata_digest(
+    metadata: RuntimeMetadata,
+    extra_info: ExtraInfo,
+) -> Result<MetadataDigest, String> {
+    let prepared = FrameMetadataPrepared::prepare(metadata)?;
+
     let type_information = prepared.as_type_information();
 
     let tree_root = types::calculate_root(type_information.types.iter().map(|t| t.hash()));
 
-    MetadataDigest::V1 {
+    Ok(MetadataDigest::V1 {
         types_tree_root: tree_root,
-        extrinsic_metadata_hash: blake3::hash(&type_information.extrinsic_metadata.encode()).into(),
-        spec_version: 1,
-        spec_name: "nice".into(),
-        base58_prefix: 1,
-        decimals: 1,
-        token_symbol: "lol".into(),
-    }
+        extrinsic_metadata_hash: type_information.extrinsic_metadata.hash(),
+        spec_version: extra_info.spec_version,
+        spec_name: extra_info.spec_name,
+        base58_prefix: extra_info.base58_prefix,
+        decimals: extra_info.decimals,
+        token_symbol: extra_info.token_symbol,
+    })
 }
 
 #[cfg(test)]
@@ -57,6 +73,14 @@ mod tests {
 
     #[test]
     fn calculate_metadata_digest_works() {
+        let extra_info = ExtraInfo {
+            spec_version: 1,
+            spec_name: "nice".into(),
+            base58_prefix: 1,
+            decimals: 1,
+            token_symbol: "lol".into(),
+        };
+
         for (fixture, expected_hash) in FIXTURES {
             println!("Processing: {fixture}");
 
@@ -75,9 +99,7 @@ mod tests {
                 .unwrap()
                 .1;
 
-            let prepared = FrameMetadataPrepared::prepare(metadata).unwrap();
-
-            let digest = calculate_metadata_digest(prepared);
+            let digest = generate_metadata_digest(metadata, extra_info.clone()).unwrap();
 
             assert_eq!(*expected_hash, array_bytes::bytes2hex("0x", &digest.hash()));
         }
