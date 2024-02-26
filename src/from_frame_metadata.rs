@@ -1,22 +1,21 @@
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    rc::Rc,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use frame_metadata::{
     v15::{ExtrinsicMetadata, SignedExtensionMetadata},
     RuntimeMetadata,
 };
 use scale_info::{
-    form::PortableForm, interner::UntrackedSymbol, Field, PortableRegistry, PortableType, Type,
-    TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
+    form::PortableForm, interner::UntrackedSymbol, Field, PortableRegistry, Type, TypeDef,
+    TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
 };
 
 use crate::types;
 
+/// The type information generated from the FRAME metadata.
 pub struct TypeInformation {
+    /// The extrinsic metadata in the final form.
     pub extrinsic_metadata: types::ExtrinsicMetadata,
+    /// The final types in the correct order they should be put into the tree.
     pub types: Vec<types::Type>,
 }
 
@@ -156,17 +155,17 @@ impl<'a> TypeContext<'a> {
     }
 }
 
-pub trait AsBasicTypeRef {
+trait AsBasicTypeRef {
     fn as_basic_type_ref(&self, context: TypeContext<'_>) -> types::TypeRef;
 }
 
-pub trait AsBasicType {
+trait AsBasicType {
     type BasicType;
 
     fn as_basic_type(&self, context: TypeContext<'_>) -> Self::BasicType;
 }
 
-pub trait IsBasicType {
+trait IsBasicType {
     fn is_basic_type(&self) -> bool;
 }
 
@@ -337,7 +336,9 @@ impl AsBasicType for TypeDefBitSequence<PortableForm> {
                 TypeDefPrimitive::U16 => 2,
                 TypeDefPrimitive::U32 => 4,
                 TypeDefPrimitive::U64 => 8,
-                p => panic!("Invalid primitive type {p:?} as store type for `BitSequence`: {self:?}"),
+                p => {
+                    panic!("Invalid primitive type {p:?} as store type for `BitSequence`: {self:?}")
+                }
             }
         } else {
             panic!("Only expected to find `1` primitive type as store type for `BitSequence`: {self:?}")
@@ -373,7 +374,7 @@ impl Visitor for CollectPrimitives {
     }
 }
 
-pub trait Visitor {
+trait Visitor {
     fn visit_type_def(&mut self, context: TypeContext, type_def: &TypeDef<PortableForm>) {
         visit_type_def(self, context, type_def)
     }
@@ -387,15 +388,11 @@ pub trait Visitor {
     fn already_visited(&mut self, id: u32) -> bool;
 }
 
-pub fn visit_type<V: Visitor + ?Sized>(
-    visitor: &mut V,
-    context: TypeContext,
-    ty: &Type<PortableForm>,
-) {
+fn visit_type<V: Visitor + ?Sized>(visitor: &mut V, context: TypeContext, ty: &Type<PortableForm>) {
     visitor.visit_type_def(context, &ty.type_def);
 }
 
-pub fn visit_type_def<V: Visitor + ?Sized>(
+fn visit_type_def<V: Visitor + ?Sized>(
     visitor: &mut V,
     context: TypeContext,
     type_def: &TypeDef<PortableForm>,

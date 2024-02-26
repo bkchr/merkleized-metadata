@@ -159,52 +159,20 @@ impl MetadataDigest {
     }
 }
 
-#[derive(Debug, Encode)]
-pub enum MerkleTree {
-    Node { left: Hash, right: Hash },
-    Leaf(Hash),
-}
+/// Calculates the root of the tree defined by the given `leaves`.
+pub fn calculate_root(leaves: impl IntoIterator<Item = Hash>) -> Hash {
+    let mut nodes = leaves.into_iter().collect::<VecDeque<_>>();
 
-impl MerkleTree {
-    pub fn hash(&self) -> Hash {
-        blake3::hash(&self.encode()).into()
+    while nodes.len() > 1 {
+        let left = nodes
+            .pop_front()
+            .expect("We have more than one element; qed");
+        let right = nodes
+            .pop_front()
+            .expect("We have more than one element; qed");
+
+        nodes.push_back(blake3::hash(&(Hash::from(left), right).encode()).into());
     }
 
-    pub fn calculate_root(leaves: impl IntoIterator<Item = Hash>) -> Hash {
-        let mut leaves = leaves.into_iter().collect::<VecDeque<_>>();
-
-        let mut nodes = VecDeque::new();
-
-        while leaves.len() > 1 {
-            let left = leaves
-                .pop_front()
-                .expect("We have more than one element; qed");
-            let right = leaves
-                .pop_front()
-                .expect("We have more than one element; qed");
-
-            nodes.push_back(Hash::from(blake3::hash(&(left, right).encode())));
-        }
-
-        if let Some(last) = leaves.pop_front() {
-            if let Some(back) = nodes.back_mut() {
-                *back = Hash::from(blake3::hash(&(back.clone(), last).encode()));
-            } else {
-                nodes.push_back(last);
-            }
-        }
-
-        while nodes.len() > 1 {
-            let left = nodes
-                .pop_front()
-                .expect("We have more than one element; qed");
-            let right = nodes
-                .pop_front()
-                .expect("We have more than one element; qed");
-
-            nodes.push_back(blake3::hash(&(Hash::from(left), right).encode()).into());
-        }
-
-        nodes.pop_back().unwrap_or_default()
-    }
+    nodes.pop_back().unwrap_or_default()
 }

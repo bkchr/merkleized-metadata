@@ -1,15 +1,14 @@
-use crate::types::MerkleTree;
 use codec::Encode;
-use intermediate_repr::FrameMetadataPrepared;
+use from_frame_metadata::FrameMetadataPrepared;
 use types::MetadataDigest;
 
-mod intermediate_repr;
+mod from_frame_metadata;
 mod types;
 
 pub fn calculate_metadata_digest(prepared: FrameMetadataPrepared) -> MetadataDigest {
     let type_information = prepared.as_type_information();
 
-    let tree_root = MerkleTree::calculate_root(type_information.types.iter().map(|t| t.hash()));
+    let tree_root = types::calculate_root(type_information.types.iter().map(|t| t.hash()));
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -48,7 +47,7 @@ mod tests {
         let digest = calculate_metadata_digest(prepared);
 
         assert_eq!(
-            "0x172913580ef78c609592809055f9b7fe1d65c40b6dd37eb62570ba22606ae777",
+            "0xa05d63fe8bc95c3b9e2aee8ecebcbad63ff1df4eff7c43d9f010baf79e607bf7",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }
