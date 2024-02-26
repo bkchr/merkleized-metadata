@@ -1,38 +1,19 @@
 use crate::types::MerkleTree;
 use codec::Encode;
-use intermediate_repr::Intermediate;
+use intermediate_repr::FrameMetadataPrepared;
 use types::MetadataDigest;
 
-pub mod frame_metadata;
 mod intermediate_repr;
 mod types;
 
-pub fn calculate_metadata_digest(intermediate: Intermediate) -> MetadataDigest {
-    let mut types = intermediate
-        .types
-        .iter()
-        .filter(|ty| !ty.borrow().expect_resolved().as_basic_type().is_empty())
-        .collect::<Vec<_>>();
-    types.sort_by_key(|ty| ty.borrow().expect_resolved().unique_id());
-    types.iter().enumerate().for_each(|(id, ty)| {
-        ty.borrow_mut()
-            .expect_resolved_mut()
-            .set_unique_id(id as u32)
-    });
+pub fn calculate_metadata_digest(prepared: FrameMetadataPrepared) -> MetadataDigest {
+    let type_information = prepared.as_type_information();
 
-    let tree_root = MerkleTree::calculate_root(
-        types
-            .iter()
-            .flat_map(|t| t.borrow().expect_resolved().as_basic_type())
-            .map(|t| t.hash()),
-    );
+    let tree_root = MerkleTree::calculate_root(type_information.types.iter().map(|t| t.hash()));
 
     MetadataDigest::V1 {
         types_tree_root: tree_root,
-        extrinsic_metadata_hash: blake3::hash(
-            &intermediate.extrinsic_metadata.as_basic_type().encode(),
-        )
-        .into(),
+        extrinsic_metadata_hash: blake3::hash(&type_information.extrinsic_metadata.encode()).into(),
         spec_version: 1,
         spec_name: "nice".into(),
         base58_prefix: 1,
@@ -62,7 +43,9 @@ mod tests {
             .unwrap()
             .1;
 
-        let digest = calculate_metadata_digest(frame_metadata::into_intermediate(metadata));
+        let prepared = FrameMetadataPrepared::prepare(metadata).unwrap();
+
+        let digest = calculate_metadata_digest(prepared);
 
         assert_eq!(
             "0xbd9ce14abd56adf9af4458db796607b235127018dba50161f7f28996f5c5e46c",

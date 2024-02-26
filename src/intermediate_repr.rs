@@ -29,7 +29,7 @@ pub struct FrameMetadataPrepared {
 impl FrameMetadataPrepared {
     pub fn prepare(metadata: RuntimeMetadata) -> Result<Self, String> {
         let metadata = match metadata {
-            RuntimeMetadata::V15(m) => &m,
+            RuntimeMetadata::V15(m) => m,
             _ => return Err("Only supports metadata V15".into()),
         };
 
@@ -74,16 +74,16 @@ impl FrameMetadataPrepared {
         &self.frame_type_registry.types[id as usize].ty
     }
 
-    pub fn to_type_information(&self) -> TypeInformation {
+    pub fn as_type_information(&self) -> TypeInformation {
         let mut next_id = 0;
-        let mut frame_id_to_id = self
+        let frame_id_to_id = self
             .accessible_types
             .iter()
             .filter_map(|id| {
                 self.get_type(*id).is_basic_type().then(|| {
                     let new_id = next_id;
                     next_id += 1;
-                    (*id, next_id)
+                    (*id, new_id)
                 })
             })
             .collect::<BTreeMap<u32, u32>>();
@@ -117,7 +117,7 @@ fn collect_accessible_types(
 
     let ty = &registry.types[ty_id as usize].ty;
 
-    let type_def = match &ty.type_def {
+    match &ty.type_def {
         TypeDef::Composite(c) => c
             .fields
             .iter()
@@ -225,7 +225,7 @@ impl AsBasicType for Type<PortableForm> {
             .segments
             .iter()
             .map(|s| AsRef::<str>::as_ref(s).to_string())
-            .collect();
+            .collect::<Vec<_>>();
 
         let type_def = match &self.type_def {
             TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
@@ -236,7 +236,7 @@ impl AsBasicType for Type<PortableForm> {
                 return variants
                     .iter()
                     .map(|v| types::Type {
-                        path,
+                        path: path.clone(),
                         type_def: types::TypeDef::Enumeration(v.as_basic_type(context)),
                     })
                     .collect::<Vec<_>>();
