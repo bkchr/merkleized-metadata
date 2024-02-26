@@ -135,8 +135,8 @@ pub struct ExtrinsicMetadata {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub struct SignedExtensionMetadata {
     pub identifier: String,
-    pub ty: TypeRef,
-    pub additional_signed: TypeRef,
+    pub included_in_extrinsic: TypeRef,
+    pub included_in_signed_data: TypeRef,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]

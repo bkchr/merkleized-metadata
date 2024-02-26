@@ -4,40 +4,35 @@ use std::{
     rc::Rc,
 };
 
+use frame_metadata::v15::SignedExtensionMetadata;
 use scale_info::{
-    form::PortableForm, interner::UntrackedSymbol, Field, PortableType, Type, TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant
+    form::PortableForm, interner::UntrackedSymbol, Field, PortableType, Type, TypeDef,
+    TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
 };
 
 use crate::types;
 
-pub struct Registry {
+pub struct FrameMetadataPrepared {
     frame_id_to_id: BTreeMap<u32, u32>,
     frame_metadata_types: BTreeMap<u32, Type<PortableForm>>,
 }
 
-impl Registry {
-    fn get_type(&self, id: u32) -> &Type<PortableForm> {
+impl FrameMetadataPrepared {
+    pub fn get_type(&self, id: u32) -> &Type<PortableForm> {
         self.frame_metadata_types
             .get(&id)
             .expect("Frame metadata identifier is valid; qed")
     }
 }
 
-pub type TypeRef = u32;
-
-pub struct Intermediate {
-    pub types: Vec<TypeRef>,
-    pub extrinsic_metadata: ExtrinsicMetadata,
-}
-
 pub trait AsBasicTypeRef {
-    fn as_basic_type_ref(&self, registry: &Registry) -> types::TypeRef;
+    fn as_basic_type_ref(&self, registry: &FrameMetadataPrepared) -> types::TypeRef;
 }
 
 pub trait AsBasicType {
     type BasicType;
 
-    fn as_basic_type(&self, registry: &Registry) -> Self::BasicType;
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType;
 }
 
 pub trait IsBasicType {
@@ -45,7 +40,7 @@ pub trait IsBasicType {
 }
 
 impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
-    fn as_basic_type_ref(&self, registry: &Registry) -> types::TypeRef {
+    fn as_basic_type_ref(&self, registry: &FrameMetadataPrepared) -> types::TypeRef {
         let frame_type = registry.get_type(self.id);
 
         let mut collector = CollectPrimitives::default();
@@ -93,7 +88,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
 impl AsBasicType for Type<PortableForm> {
     type BasicType = Vec<types::Type>;
 
-    fn as_basic_type(&self, registry: &Registry) -> Self::BasicType {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType {
         let path = self
             .path
             .segments
@@ -147,7 +142,7 @@ impl IsBasicType for Type<PortableForm> {
 impl AsBasicType for Field<PortableForm> {
     type BasicType = types::Field;
 
-    fn as_basic_type(&self, registry: &Registry) -> Self::BasicType {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType {
         types::Field {
             name: self
                 .name
@@ -165,7 +160,7 @@ impl AsBasicType for Field<PortableForm> {
 impl AsBasicType for Variant<PortableForm> {
     type BasicType = types::EnumerationVariant;
 
-    fn as_basic_type(&self, registry: &Registry) -> types::EnumerationVariant {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::EnumerationVariant {
         types::EnumerationVariant {
             name: AsRef::<str>::as_ref(&self.name).to_string(),
             fields: self
@@ -181,7 +176,7 @@ impl AsBasicType for Variant<PortableForm> {
 impl AsBasicType for TypeDefArray<PortableForm> {
     type BasicType = types::TypeDefArray;
 
-    fn as_basic_type(&self, registry: &Registry) -> types::TypeDefArray {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::TypeDefArray {
         types::TypeDefArray {
             len: self.len,
             type_param: self.type_param.as_basic_type_ref(registry),
@@ -192,12 +187,13 @@ impl AsBasicType for TypeDefArray<PortableForm> {
 impl AsBasicType for TypeDefBitSequence<PortableForm> {
     type BasicType = types::TypeDefBitSequence;
 
-    fn as_basic_type(&self, registry: &Registry) -> types::TypeDefBitSequence {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::TypeDefBitSequence {
         types::TypeDefBitSequence {
             bit_store_type: self.bit_store_type.as_basic_type_ref(registry),
-            least_significant_bit_first: self
-                .bit_order_type
+            least_significant_bit_first: registry
+                .get_type(self.bit_order_type.id)
                 .path
+                .segments
                 .iter()
                 .find(|p| *p == "Lsb0" || *p == "Msb0")
                 .expect("`bit_order_type` is either `Lsb0` or `Msb0`")
@@ -223,11 +219,11 @@ impl Visitor for CollectPrimitives {
 }
 
 pub trait Visitor {
-    fn visit_type_def(&mut self, registry: &Registry, type_def: &TypeDef<PortableForm>) {
+    fn visit_type_def(&mut self, registry: &FrameMetadataPrepared, type_def: &TypeDef<PortableForm>) {
         visit_type_def(self, registry, type_def)
     }
 
-    fn visit_type(&mut self, registry: &Registry, ty: &Type<PortableForm>) {
+    fn visit_type(&mut self, registry: &FrameMetadataPrepared, ty: &Type<PortableForm>) {
         visit_type(self, registry, ty)
     }
 
@@ -238,7 +234,7 @@ pub trait Visitor {
 
 pub fn visit_type<V: Visitor + ?Sized>(
     visitor: &mut V,
-    registry: &Registry,
+    registry: &FrameMetadataPrepared,
     ty: &Type<PortableForm>,
 ) {
     visitor.visit_type_def(registry, &ty.type_def);
@@ -246,7 +242,7 @@ pub fn visit_type<V: Visitor + ?Sized>(
 
 pub fn visit_type_def<V: Visitor + ?Sized>(
     visitor: &mut V,
-    registry: &Registry,
+    registry: &FrameMetadataPrepared,
     type_def: &TypeDef<PortableForm>,
 ) {
     match type_def {
@@ -254,107 +250,77 @@ pub fn visit_type_def<V: Visitor + ?Sized>(
             v.variants.iter().for_each(|v| {
                 for f in &v.fields {
                     if !visitor.already_visited(f.ty.id) {
-                        visitor.visit_type(registry, f.ty.id)
+                        visitor.visit_type(registry, registry.get_type(f.ty.id))
                     }
                 }
             });
         }
         TypeDef::Array(a) => {
             if !visitor.already_visited(a.type_param.id) {
-                visitor.visit_type(registry, a.type_param.id)
+                visitor.visit_type(registry, registry.get_type(a.type_param.id))
             }
         }
         TypeDef::Composite(c) => {
             c.fields.iter().for_each(|f| {
                 if !visitor.already_visited(f.ty.id) {
-                    visitor.visit_type(registry, f.ty.id)
+                    visitor.visit_type(registry, registry.get_type(f.ty.id))
                 }
             });
         }
         TypeDef::Sequence(s) => {
             if !visitor.already_visited(s.type_param.id) {
-                visitor.visit_type(registry, s.type_param)
+                visitor.visit_type(registry, registry.get_type(s.type_param.id))
             }
         }
         TypeDef::Tuple(t) => t.fields.iter().for_each(|t| {
             if !visitor.already_visited(t.id) {
-                visitor.visit_type(registry, t.id)
+                visitor.visit_type(registry, registry.get_type(t.id))
             }
         }),
         TypeDef::Compact(c) => {
             if !visitor.already_visited(c.type_param.id) {
-                visitor.visit_type(registry, c.type_param.id)
+                visitor.visit_type(registry, registry.get_type(c.type_param.id))
             }
         }
         TypeDef::Primitive(p) => visitor.visit_primitive(p),
         TypeDef::BitSequence(b) => {
             if !visitor.already_visited(b.bit_order_type.id) {
-                visitor.visit_type(registry, b.bit_order_type.id)
+                visitor.visit_type(registry, registry.get_type(b.bit_order_type.id))
             }
 
             if !visitor.already_visited(b.bit_store_type.id) {
-                visitor.visit_type(registry, b.bit_store_type.id)
+                visitor.visit_type(registry, registry.get_type(b.bit_store_type.id))
             }
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ExtrinsicMetadata {
-    /// Extrinsic version.
-    pub version: u8,
-    pub address_ty: TypeRef,
-    pub call_ty: TypeRef,
-    pub signature_ty: TypeRef,
-    /// The signed extensions in the order they appear in the extrinsic.
-    pub signed_extensions: Vec<SignedExtensionMetadata>,
-}
+impl AsBasicType for frame_metadata::v15::ExtrinsicMetadata<PortableForm> {
+    type BasicType = types::ExtrinsicMetadata;
 
-impl ExtrinsicMetadata {
-    pub fn as_basic_type(&self) -> types::ExtrinsicMetadata {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::ExtrinsicMetadata {
         types::ExtrinsicMetadata {
             version: self.version,
-            address_ty: self
-                .address_ty
-                .borrow()
-                .expect_resolved()
-                .as_basic_type_ref(),
-            call_ty: self.call_ty.borrow().expect_resolved().as_basic_type_ref(),
-            signature_ty: self
-                .signature_ty
-                .borrow()
-                .expect_resolved()
-                .as_basic_type_ref(),
+            address_ty: self.address_ty.as_basic_type_ref(registry),
+            call_ty: self.call_ty.as_basic_type_ref(registry),
+            signature_ty: self.signature_ty.as_basic_type_ref(registry),
             signed_extensions: self
                 .signed_extensions
                 .iter()
-                .map(|se| se.as_basic_type())
+                .map(|se| se.as_basic_type(registry))
                 .collect(),
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SignedExtensionMetadata {
-    pub identifier: String,
-    pub included_in_extrinsic: TypeRef,
-    pub included_in_signed_data: TypeRef,
-}
+impl AsBasicType for SignedExtensionMetadata<PortableForm> {
+    type BasicType = types::SignedExtensionMetadata;
 
-impl SignedExtensionMetadata {
-    pub fn as_basic_type(&self) -> types::SignedExtensionMetadata {
+    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::SignedExtensionMetadata {
         types::SignedExtensionMetadata {
-            identifier: self.identifier.clone(),
-            ty: self
-                .included_in_extrinsic
-                .borrow()
-                .expect_resolved()
-                .as_basic_type_ref(),
-            additional_signed: self
-                .included_in_signed_data
-                .borrow()
-                .expect_resolved()
-                .as_basic_type_ref(),
+            identifier: AsRef::<str>::as_ref(&self.identifier).to_string(),
+            included_in_extrinsic: self.ty.as_basic_type_ref(registry),
+            included_in_signed_data: self.additional_signed.as_basic_type_ref(registry),
         }
     }
 }
