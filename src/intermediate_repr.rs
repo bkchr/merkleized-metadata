@@ -4,7 +4,10 @@ use std::{
     rc::Rc,
 };
 
-use frame_metadata::{v15::SignedExtensionMetadata, RuntimeMetadata};
+use frame_metadata::{
+    v15::{ExtrinsicMetadata, SignedExtensionMetadata},
+    RuntimeMetadata,
+};
 use scale_info::{
     form::PortableForm, interner::UntrackedSymbol, Field, PortableRegistry, PortableType, Type,
     TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
@@ -12,9 +15,15 @@ use scale_info::{
 
 use crate::types;
 
+pub struct TypeInformation {
+    pub extrinsic_metadata: types::ExtrinsicMetadata,
+    pub types: Vec<types::Type>,
+}
+
 pub struct FrameMetadataPrepared {
     accessible_types: BTreeSet<u32>,
     frame_type_registry: PortableRegistry,
+    extrinsic_metadata: ExtrinsicMetadata<PortableForm>,
 }
 
 impl FrameMetadataPrepared {
@@ -57,11 +66,43 @@ impl FrameMetadataPrepared {
         Ok(Self {
             frame_type_registry,
             accessible_types,
+            extrinsic_metadata,
         })
     }
 
-    pub fn get_type(&self, id: u32) -> &Type<PortableForm> {
+    fn get_type(&self, id: u32) -> &Type<PortableForm> {
         &self.frame_type_registry.types[id as usize].ty
+    }
+
+    pub fn to_type_information(&self) -> TypeInformation {
+        let mut next_id = 0;
+        let mut frame_id_to_id = self
+            .accessible_types
+            .iter()
+            .filter_map(|id| {
+                self.get_type(*id).is_basic_type().then(|| {
+                    let new_id = next_id;
+                    next_id += 1;
+                    (*id, next_id)
+                })
+            })
+            .collect::<BTreeMap<u32, u32>>();
+
+        let type_context = TypeContext {
+            frame_id_to_id: &frame_id_to_id,
+            frame_type_registry: &self.frame_type_registry,
+        };
+
+        let extrinsic_metadata = self.extrinsic_metadata.as_basic_type(type_context);
+        let types = frame_id_to_id
+            .keys()
+            .flat_map(|id| self.get_type(*id).as_basic_type(type_context))
+            .collect::<Vec<_>>();
+
+        TypeInformation {
+            extrinsic_metadata,
+            types,
+        }
     }
 }
 
@@ -103,14 +144,26 @@ fn collect_accessible_types(
     };
 }
 
+#[derive(Clone, Copy)]
+struct TypeContext<'a> {
+    frame_type_registry: &'a PortableRegistry,
+    frame_id_to_id: &'a BTreeMap<u32, u32>,
+}
+
+impl<'a> TypeContext<'a> {
+    fn get_type(&self, id: u32) -> &Type<PortableForm> {
+        &self.frame_type_registry.types[id as usize].ty
+    }
+}
+
 pub trait AsBasicTypeRef {
-    fn as_basic_type_ref(&self, registry: &FrameMetadataPrepared) -> types::TypeRef;
+    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> types::TypeRef;
 }
 
 pub trait AsBasicType {
     type BasicType;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType;
+    fn as_basic_type(&self, context: TypeContext<'_>) -> Self::BasicType;
 }
 
 pub trait IsBasicType {
@@ -118,11 +171,11 @@ pub trait IsBasicType {
 }
 
 impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
-    fn as_basic_type_ref(&self, registry: &FrameMetadataPrepared) -> types::TypeRef {
-        let frame_type = registry.get_type(self.id);
+    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> types::TypeRef {
+        let frame_type = context.get_type(self.id);
 
         let mut collector = CollectPrimitives::default();
-        collector.visit_type(registry, frame_type);
+        collector.visit_type(context, frame_type);
 
         match &frame_type.type_def {
             TypeDef::Primitive(p) => match p {
@@ -158,7 +211,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
                     types::TypeRef::CompactVoid
                 }
             }
-            _ => types::TypeRef::ById(registry.frame_id_to_id.get(&self.id).unwrap().into()),
+            _ => types::TypeRef::ById(context.frame_id_to_id.get(&self.id).unwrap().into()),
         }
     }
 }
@@ -166,7 +219,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
 impl AsBasicType for Type<PortableForm> {
     type BasicType = Vec<types::Type>;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType {
+    fn as_basic_type(&self, context: TypeContext) -> Self::BasicType {
         let path = self
             .path
             .segments
@@ -184,24 +237,24 @@ impl AsBasicType for Type<PortableForm> {
                     .iter()
                     .map(|v| types::Type {
                         path,
-                        type_def: types::TypeDef::Enumeration(v.as_basic_type(registry)),
+                        type_def: types::TypeDef::Enumeration(v.as_basic_type(context)),
                     })
                     .collect::<Vec<_>>();
             }
-            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type(registry)),
+            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type(context)),
             TypeDef::Composite(c) => types::TypeDef::Composite(
-                c.fields.iter().map(|f| f.as_basic_type(registry)).collect(),
+                c.fields.iter().map(|f| f.as_basic_type(context)).collect(),
             ),
             TypeDef::Sequence(s) => {
-                types::TypeDef::Sequence(s.type_param.as_basic_type_ref(registry))
+                types::TypeDef::Sequence(s.type_param.as_basic_type_ref(context))
             }
             TypeDef::Tuple(t) => types::TypeDef::Tuple(
                 t.fields
                     .iter()
-                    .map(|t| t.as_basic_type_ref(registry))
+                    .map(|t| t.as_basic_type_ref(context))
                     .collect(),
             ),
-            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type(registry)),
+            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type(context)),
         };
 
         vec![types::Type { path, type_def }]
@@ -220,13 +273,13 @@ impl IsBasicType for Type<PortableForm> {
 impl AsBasicType for Field<PortableForm> {
     type BasicType = types::Field;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> Self::BasicType {
+    fn as_basic_type(&self, context: TypeContext) -> Self::BasicType {
         types::Field {
             name: self
                 .name
                 .as_ref()
                 .map(|n| AsRef::<str>::as_ref(n).to_string()),
-            ty: self.ty.as_basic_type_ref(registry),
+            ty: self.ty.as_basic_type_ref(context),
             type_name: self
                 .type_name
                 .as_ref()
@@ -238,13 +291,13 @@ impl AsBasicType for Field<PortableForm> {
 impl AsBasicType for Variant<PortableForm> {
     type BasicType = types::EnumerationVariant;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::EnumerationVariant {
+    fn as_basic_type(&self, context: TypeContext) -> types::EnumerationVariant {
         types::EnumerationVariant {
             name: AsRef::<str>::as_ref(&self.name).to_string(),
             fields: self
                 .fields
                 .iter()
-                .map(|f| f.as_basic_type(registry))
+                .map(|f| f.as_basic_type(context))
                 .collect(),
             index: self.index,
         }
@@ -254,10 +307,10 @@ impl AsBasicType for Variant<PortableForm> {
 impl AsBasicType for TypeDefArray<PortableForm> {
     type BasicType = types::TypeDefArray;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::TypeDefArray {
+    fn as_basic_type(&self, context: TypeContext) -> types::TypeDefArray {
         types::TypeDefArray {
             len: self.len,
-            type_param: self.type_param.as_basic_type_ref(registry),
+            type_param: self.type_param.as_basic_type_ref(context),
         }
     }
 }
@@ -265,10 +318,10 @@ impl AsBasicType for TypeDefArray<PortableForm> {
 impl AsBasicType for TypeDefBitSequence<PortableForm> {
     type BasicType = types::TypeDefBitSequence;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::TypeDefBitSequence {
+    fn as_basic_type(&self, context: TypeContext) -> types::TypeDefBitSequence {
         types::TypeDefBitSequence {
-            bit_store_type: self.bit_store_type.as_basic_type_ref(registry),
-            least_significant_bit_first: registry
+            bit_store_type: self.bit_store_type.as_basic_type_ref(context),
+            least_significant_bit_first: context
                 .get_type(self.bit_order_type.id)
                 .path
                 .segments
@@ -297,16 +350,12 @@ impl Visitor for CollectPrimitives {
 }
 
 pub trait Visitor {
-    fn visit_type_def(
-        &mut self,
-        registry: &FrameMetadataPrepared,
-        type_def: &TypeDef<PortableForm>,
-    ) {
-        visit_type_def(self, registry, type_def)
+    fn visit_type_def(&mut self, context: TypeContext, type_def: &TypeDef<PortableForm>) {
+        visit_type_def(self, context, type_def)
     }
 
-    fn visit_type(&mut self, registry: &FrameMetadataPrepared, ty: &Type<PortableForm>) {
-        visit_type(self, registry, ty)
+    fn visit_type(&mut self, context: TypeContext, ty: &Type<PortableForm>) {
+        visit_type(self, context, ty)
     }
 
     fn visit_primitive(&mut self, _primitive: &scale_info::TypeDefPrimitive) {}
@@ -316,15 +365,15 @@ pub trait Visitor {
 
 pub fn visit_type<V: Visitor + ?Sized>(
     visitor: &mut V,
-    registry: &FrameMetadataPrepared,
+    context: TypeContext,
     ty: &Type<PortableForm>,
 ) {
-    visitor.visit_type_def(registry, &ty.type_def);
+    visitor.visit_type_def(context, &ty.type_def);
 }
 
 pub fn visit_type_def<V: Visitor + ?Sized>(
     visitor: &mut V,
-    registry: &FrameMetadataPrepared,
+    context: TypeContext,
     type_def: &TypeDef<PortableForm>,
 ) {
     match type_def {
@@ -332,46 +381,46 @@ pub fn visit_type_def<V: Visitor + ?Sized>(
             v.variants.iter().for_each(|v| {
                 for f in &v.fields {
                     if !visitor.already_visited(f.ty.id) {
-                        visitor.visit_type(registry, registry.get_type(f.ty.id))
+                        visitor.visit_type(context, context.get_type(f.ty.id))
                     }
                 }
             });
         }
         TypeDef::Array(a) => {
             if !visitor.already_visited(a.type_param.id) {
-                visitor.visit_type(registry, registry.get_type(a.type_param.id))
+                visitor.visit_type(context, context.get_type(a.type_param.id))
             }
         }
         TypeDef::Composite(c) => {
             c.fields.iter().for_each(|f| {
                 if !visitor.already_visited(f.ty.id) {
-                    visitor.visit_type(registry, registry.get_type(f.ty.id))
+                    visitor.visit_type(context, context.get_type(f.ty.id))
                 }
             });
         }
         TypeDef::Sequence(s) => {
             if !visitor.already_visited(s.type_param.id) {
-                visitor.visit_type(registry, registry.get_type(s.type_param.id))
+                visitor.visit_type(context, context.get_type(s.type_param.id))
             }
         }
         TypeDef::Tuple(t) => t.fields.iter().for_each(|t| {
             if !visitor.already_visited(t.id) {
-                visitor.visit_type(registry, registry.get_type(t.id))
+                visitor.visit_type(context, context.get_type(t.id))
             }
         }),
         TypeDef::Compact(c) => {
             if !visitor.already_visited(c.type_param.id) {
-                visitor.visit_type(registry, registry.get_type(c.type_param.id))
+                visitor.visit_type(context, context.get_type(c.type_param.id))
             }
         }
         TypeDef::Primitive(p) => visitor.visit_primitive(p),
         TypeDef::BitSequence(b) => {
             if !visitor.already_visited(b.bit_order_type.id) {
-                visitor.visit_type(registry, registry.get_type(b.bit_order_type.id))
+                visitor.visit_type(context, context.get_type(b.bit_order_type.id))
             }
 
             if !visitor.already_visited(b.bit_store_type.id) {
-                visitor.visit_type(registry, registry.get_type(b.bit_store_type.id))
+                visitor.visit_type(context, context.get_type(b.bit_store_type.id))
             }
         }
     }
@@ -380,16 +429,16 @@ pub fn visit_type_def<V: Visitor + ?Sized>(
 impl AsBasicType for frame_metadata::v15::ExtrinsicMetadata<PortableForm> {
     type BasicType = types::ExtrinsicMetadata;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::ExtrinsicMetadata {
+    fn as_basic_type(&self, context: TypeContext) -> types::ExtrinsicMetadata {
         types::ExtrinsicMetadata {
             version: self.version,
-            address_ty: self.address_ty.as_basic_type_ref(registry),
-            call_ty: self.call_ty.as_basic_type_ref(registry),
-            signature_ty: self.signature_ty.as_basic_type_ref(registry),
+            address_ty: self.address_ty.as_basic_type_ref(context),
+            call_ty: self.call_ty.as_basic_type_ref(context),
+            signature_ty: self.signature_ty.as_basic_type_ref(context),
             signed_extensions: self
                 .signed_extensions
                 .iter()
-                .map(|se| se.as_basic_type(registry))
+                .map(|se| se.as_basic_type(context))
                 .collect(),
         }
     }
@@ -398,11 +447,11 @@ impl AsBasicType for frame_metadata::v15::ExtrinsicMetadata<PortableForm> {
 impl AsBasicType for SignedExtensionMetadata<PortableForm> {
     type BasicType = types::SignedExtensionMetadata;
 
-    fn as_basic_type(&self, registry: &FrameMetadataPrepared) -> types::SignedExtensionMetadata {
+    fn as_basic_type(&self, context: TypeContext) -> types::SignedExtensionMetadata {
         types::SignedExtensionMetadata {
             identifier: AsRef::<str>::as_ref(&self.identifier).to_string(),
-            included_in_extrinsic: self.ty.as_basic_type_ref(registry),
-            included_in_signed_data: self.additional_signed.as_basic_type_ref(registry),
+            included_in_extrinsic: self.ty.as_basic_type_ref(context),
+            included_in_signed_data: self.additional_signed.as_basic_type_ref(context),
         }
     }
 }
