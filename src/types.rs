@@ -103,7 +103,7 @@ pub struct TypeDefArray {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Debug)]
 pub struct TypeDefBitSequence {
-    pub bit_store_type: TypeRef,
+    pub num_bytes: u8,
     pub least_significant_bit_first: bool,
 }
 

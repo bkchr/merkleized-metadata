@@ -328,8 +328,23 @@ impl AsBasicType for TypeDefBitSequence<PortableForm> {
     type BasicType = types::TypeDefBitSequence;
 
     fn as_basic_type(&self, context: TypeContext) -> types::TypeDefBitSequence {
+        let mut collector = CollectPrimitives::default();
+        collector.visit_type(context, context.get_type(self.bit_store_type.id));
+
+        let num_bytes = if collector.found.len() == 1 {
+            match &collector.found[0] {
+                TypeDefPrimitive::U8 => 1,
+                TypeDefPrimitive::U16 => 2,
+                TypeDefPrimitive::U32 => 4,
+                TypeDefPrimitive::U64 => 8,
+                p => panic!("Invalid primitive type {p:?} as store type for `BitSequence`: {self:?}"),
+            }
+        } else {
+            panic!("Only expected to find `1` primitive type as store type for `BitSequence`: {self:?}")
+        };
+
         types::TypeDefBitSequence {
-            bit_store_type: self.bit_store_type.as_basic_type_ref(context),
+            num_bytes,
             least_significant_bit_first: context
                 .get_type(self.bit_order_type.id)
                 .path

@@ -48,7 +48,7 @@ mod tests {
         let digest = calculate_metadata_digest(prepared);
 
         assert_eq!(
-            "0xbd9ce14abd56adf9af4458db796607b235127018dba50161f7f28996f5c5e46c",
+            "0x172913580ef78c609592809055f9b7fe1d65c40b6dd37eb62570ba22606ae777",
             array_bytes::bytes2hex("0x", &digest.hash())
         );
     }
