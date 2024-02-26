@@ -208,9 +208,12 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
                         p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
                     }
                 } else {
-                    types::TypeRef::CompactVoid
+                    types::TypeRef::Void
                 }
             }
+            TypeDef::Variant(v) if v.variants.is_empty() => types::TypeRef::Void,
+            TypeDef::Composite(c) if c.fields.is_empty() => types::TypeRef::Void,
+            TypeDef::Tuple(t) if t.fields.is_empty() => types::TypeRef::Void,
             _ => types::TypeRef::ById(context.frame_id_to_id.get(&self.id).unwrap().into()),
         }
     }
@@ -229,6 +232,9 @@ impl AsBasicType for Type<PortableForm> {
 
         let type_def = match &self.type_def {
             TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
+            TypeDef::Composite(c) if c.fields.is_empty() => return Vec::new(),
+            TypeDef::Variant(v) if v.variants.is_empty() => return Vec::new(),
+            TypeDef::Tuple(t) if t.fields.is_empty() => return Vec::new(),
             TypeDef::Variant(v) => {
                 let mut variants = v.variants.clone();
                 variants.sort_by_key(|v| v.index);
@@ -263,8 +269,11 @@ impl AsBasicType for Type<PortableForm> {
 
 impl IsBasicType for Type<PortableForm> {
     fn is_basic_type(&self) -> bool {
-        match self.type_def {
+        match &self.type_def {
             TypeDef::Compact(_) | TypeDef::Primitive(_) => false,
+            TypeDef::Variant(v) if v.variants.is_empty() => false,
+            TypeDef::Composite(c) if c.fields.is_empty() => false,
+            TypeDef::Tuple(t) if t.fields.is_empty() => false,
             _ => true,
         }
     }
