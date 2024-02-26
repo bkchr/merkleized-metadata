@@ -1,7 +1,9 @@
+use codec::Compact;
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
-use types::MetadataDigest;
+use types::{Hash, MetadataDigest};
 
+mod extrinsic_decoder;
 mod from_frame_metadata;
 mod types;
 
@@ -35,6 +37,34 @@ pub fn generate_metadata_digest(
         decimals: extra_info.decimals,
         token_symbol: extra_info.token_symbol,
     })
+}
+
+/// All the possible elements of a merkle tree.
+pub enum MerkleTreeElement {
+    Node {
+        left: Hash,
+        right: Hash,
+    },
+    Leaf {
+        leaf_index: Compact<u32>,
+        type_id: Compact<u32>,
+        ty: types::Type,
+    },
+}
+
+/// A proof containing all the tree elements to decode a specific extrinsic.
+///
+/// The root of the tree is [`MetadataDigest::V1::types_tree_root`].
+pub struct Proof {
+    /// All the tree elements required to decode the extrinsic.
+    pub tree_elements: Vec<MerkleTreeElement>,
+}
+
+pub fn generate_proof_for_extrinsic(
+    extrinsic: &[u8],
+    metadata: RuntimeMetadata,
+) -> Result<Proof, String> {
+    let prepared = FrameMetadataPrepared::prepare(metadata)?;
 }
 
 #[cfg(test)]
