@@ -1,28 +1,106 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 
-use frame_metadata::v15::SignedExtensionMetadata;
+use frame_metadata::{v15::SignedExtensionMetadata, RuntimeMetadata};
 use scale_info::{
-    form::PortableForm, interner::UntrackedSymbol, Field, PortableType, Type, TypeDef,
-    TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
+    form::PortableForm, interner::UntrackedSymbol, Field, PortableRegistry, PortableType, Type,
+    TypeDef, TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
 };
 
 use crate::types;
 
 pub struct FrameMetadataPrepared {
-    frame_id_to_id: BTreeMap<u32, u32>,
-    frame_metadata_types: BTreeMap<u32, Type<PortableForm>>,
+    accessible_types: BTreeSet<u32>,
+    frame_type_registry: PortableRegistry,
 }
 
 impl FrameMetadataPrepared {
-    pub fn get_type(&self, id: u32) -> &Type<PortableForm> {
-        self.frame_metadata_types
-            .get(&id)
-            .expect("Frame metadata identifier is valid; qed")
+    pub fn prepare(metadata: RuntimeMetadata) -> Result<Self, String> {
+        let metadata = match metadata {
+            RuntimeMetadata::V15(m) => &m,
+            _ => return Err("Only supports metadata V15".into()),
+        };
+
+        let frame_type_registry = metadata.types;
+        let extrinsic_metadata = metadata.extrinsic;
+
+        let mut accessible_types = Default::default();
+
+        collect_accessible_types(
+            extrinsic_metadata.call_ty.id,
+            &mut accessible_types,
+            &frame_type_registry,
+        );
+        collect_accessible_types(
+            extrinsic_metadata.address_ty.id,
+            &mut accessible_types,
+            &frame_type_registry,
+        );
+        collect_accessible_types(
+            extrinsic_metadata.signature_ty.id,
+            &mut accessible_types,
+            &frame_type_registry,
+        );
+
+        extrinsic_metadata.signed_extensions.iter().for_each(|se| {
+            collect_accessible_types(se.ty.id, &mut accessible_types, &frame_type_registry);
+            collect_accessible_types(
+                se.additional_signed.id,
+                &mut accessible_types,
+                &frame_type_registry,
+            );
+        });
+
+        Ok(Self {
+            frame_type_registry,
+            accessible_types,
+        })
     }
+
+    pub fn get_type(&self, id: u32) -> &Type<PortableForm> {
+        &self.frame_type_registry.types[id as usize].ty
+    }
+}
+
+fn collect_accessible_types(
+    ty_id: u32,
+    accessible_types: &mut BTreeSet<u32>,
+    registry: &PortableRegistry,
+) {
+    if !accessible_types.insert(ty_id) {
+        return;
+    }
+
+    let ty = &registry.types[ty_id as usize].ty;
+
+    let type_def = match &ty.type_def {
+        TypeDef::Composite(c) => c
+            .fields
+            .iter()
+            .for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry)),
+        TypeDef::Variant(v) => v.variants.iter().for_each(|v| {
+            v.fields
+                .iter()
+                .for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry))
+        }),
+        TypeDef::Sequence(s) => {
+            collect_accessible_types(s.type_param.id, accessible_types, registry)
+        }
+        TypeDef::Array(a) => collect_accessible_types(a.type_param.id, accessible_types, registry),
+        TypeDef::Tuple(t) => t
+            .fields
+            .iter()
+            .for_each(|t| collect_accessible_types(t.id, accessible_types, registry)),
+        // Primitive types are not individual types in the final type information.
+        TypeDef::Primitive(_) => {}
+        // `Compact` is converted to a primitive like type and thus, the inner type is not required.
+        TypeDef::Compact(_) => {}
+        // The order and store types are also not required.
+        TypeDef::BitSequence(_) => {}
+    };
 }
 
 pub trait AsBasicTypeRef {
@@ -219,7 +297,11 @@ impl Visitor for CollectPrimitives {
 }
 
 pub trait Visitor {
-    fn visit_type_def(&mut self, registry: &FrameMetadataPrepared, type_def: &TypeDef<PortableForm>) {
+    fn visit_type_def(
+        &mut self,
+        registry: &FrameMetadataPrepared,
+        type_def: &TypeDef<PortableForm>,
+    ) {
         visit_type_def(self, registry, type_def)
     }
 
