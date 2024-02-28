@@ -15,8 +15,10 @@ use crate::types;
 pub struct TypeInformation {
     /// The extrinsic metadata in the final form.
     pub extrinsic_metadata: types::ExtrinsicMetadata,
-    /// The final types in the correct order they should be put into the tree.
-    pub types: Vec<types::Type>,
+    /// The mapping from ID to the final types.
+    ///
+    /// Only [`Type::Enumeration`](types::Type::Enumeration) will have a vector with length > 1.
+    pub types: BTreeMap<u32, Vec<types::Type>>,
 }
 
 pub struct FrameMetadataPrepared {
@@ -94,9 +96,9 @@ impl FrameMetadataPrepared {
 
         let extrinsic_metadata = self.extrinsic_metadata.as_basic_type(type_context);
         let types = frame_id_to_id
-            .keys()
-            .flat_map(|id| self.get_type(*id).as_basic_type(type_context))
-            .collect::<Vec<_>>();
+            .iter()
+            .map(|(frame_id, id)| (*id, self.get_type(*frame_id).as_basic_type(type_context)))
+            .collect::<BTreeMap<_, _>>();
 
         TypeInformation {
             extrinsic_metadata,

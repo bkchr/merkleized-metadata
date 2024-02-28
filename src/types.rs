@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use codec::{Compact, Encode};
 
 /// A reference to a type in the registry.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode, Default, Copy)]
 pub enum TypeRef {
     #[codec(index = 0)]
     Bool,
@@ -46,6 +46,7 @@ pub enum TypeRef {
     #[codec(index = 19)]
     CompactU128,
     #[codec(index = 20)]
+    #[default]
     Void,
     #[codec(index = 21)]
     ById(Compact<u32>),
