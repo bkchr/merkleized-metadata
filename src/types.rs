@@ -54,8 +54,11 @@ pub enum TypeRef {
 
 impl TypeRef {
     pub fn id(&self) -> Option<u32> {
-        let Self::ById(id) = self else { return None };
-        Some(id)
+        if let Self::ById(id) = self {
+            Some(id.0)
+        } else {
+            None
+        }
     }
 }
 

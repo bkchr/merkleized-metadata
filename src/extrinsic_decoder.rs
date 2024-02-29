@@ -58,15 +58,15 @@ impl TypeResolver for TypeInformation {
             return Err(format!("{type_id} type is empty"));
         }
 
-        let type_def = types[0].type_def;
-        let value = match &type_def {
+        let type_def = &types[0].type_def;
+        let value = match type_def {
             TypeDef::Array(a) => visitor.visit_array(&a.type_param, a.len as usize),
             TypeDef::Composite(c) => visitor.visit_composite(c.iter().map(|f| Field {
                 name: f.name.as_deref(),
                 id: &f.ty,
             })),
             TypeDef::Enumeration(_) => visitor.visit_variant(types.iter().map(|t| {
-                let TypeDef::Enumeration(v) = t.type_def else {
+                let TypeDef::Enumeration(v) = &t.type_def else {
                     panic!("AHH")
                 };
 
@@ -135,7 +135,7 @@ impl Visitor for CollectAccessedTypes {
     type Error = DecodeError;
 
     fn visit_bool<'scale, 'resolver>(
-        mut self,
+        self,
         _value: bool,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -143,7 +143,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_char<'scale, 'resolver>(
-        mut self,
+        self,
         _value: char,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -151,7 +151,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u8<'scale, 'resolver>(
-        mut self,
+        self,
         _value: u8,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -159,7 +159,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u16<'scale, 'resolver>(
-        mut self,
+        self,
         _value: u16,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -167,7 +167,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u32<'scale, 'resolver>(
-        mut self,
+        self,
         _value: u32,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -175,7 +175,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u64<'scale, 'resolver>(
-        mut self,
+        self,
         _value: u64,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -183,7 +183,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u128<'scale, 'resolver>(
-        mut self,
+        self,
         _value: u128,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -191,7 +191,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_u256<'scale, 'resolver>(
-        mut self,
+        self,
         _value: &'scale [u8; 32],
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -199,7 +199,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i8<'scale, 'resolver>(
-        mut self,
+        self,
         _value: i8,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -207,7 +207,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i16<'scale, 'resolver>(
-        mut self,
+        self,
         _value: i16,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -215,7 +215,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i32<'scale, 'resolver>(
-        mut self,
+        self,
         _value: i32,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -223,7 +223,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i64<'scale, 'resolver>(
-        mut self,
+        self,
         _value: i64,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -231,7 +231,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i128<'scale, 'resolver>(
-        mut self,
+        self,
         _value: i128,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -239,7 +239,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_i256<'scale, 'resolver>(
-        mut self,
+        self,
         _value: &'scale [u8; 32],
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -300,7 +300,7 @@ impl Visitor for CollectAccessedTypes {
     }
 
     fn visit_str<'scale, 'resolver>(
-        mut self,
+        self,
         _value: &mut scale_decode::visitor::types::Str<'scale>,
         _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
@@ -430,7 +430,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
                 .extrinsic_metadata
                 .signed_extensions
                 .iter()
-                .try_fold(visitor, |visitor, se| {
+                .try_fold(visitor.clone(), |visitor, se| {
                     decode_with_visitor(
                         &mut additional,
                         &se.included_in_extrinsic,

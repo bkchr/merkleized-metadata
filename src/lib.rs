@@ -26,7 +26,8 @@ pub fn generate_metadata_digest(
 
     let type_information = prepared.as_type_information();
 
-    let tree_root = types::calculate_root(type_information.types.iter().map(|t| t.hash()));
+    let tree_root =
+        types::calculate_root(type_information.types.values().flatten().map(|t| t.hash()));
 
     Ok(MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -65,6 +66,7 @@ pub fn generate_proof_for_extrinsic(
     metadata: RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
+    todo!()
 }
 
 #[cfg(test)]
