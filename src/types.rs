@@ -52,6 +52,13 @@ pub enum TypeRef {
     ById(Compact<u32>),
 }
 
+impl TypeRef {
+    pub fn id(&self) -> Option<u32> {
+        let Self::ById(id) = self else { return None };
+        Some(id)
+    }
+}
+
 pub type Hash = [u8; 32];
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]

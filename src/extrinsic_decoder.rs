@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
+use codec::{Compact, Decode};
 use scale_decode::{
     ext::scale_type_resolver::{
         BitsOrderFormat, BitsStoreFormat, Primitive as RPrimitive, ResolvedTypeVisitor, Variant,
@@ -108,8 +109,24 @@ impl TypeResolver for TypeInformation {
 }
 
 #[derive(Clone)]
+enum AccessedType {
+    Enumeration(BTreeSet<u32>),
+    Other,
+}
+
+impl AccessedType {
+    fn add_variant(&mut self, variant: u32) {
+        if let Self::Enumeration(variants) = self {
+            variants.insert(variant);
+        } else {
+            panic!("`add_variant` should only be called for `Enumeration`s.")
+        }
+    }
+}
+
+#[derive(Clone)]
 struct CollectAccessedTypes {
-    accessed_types: BTreeMap<TypeRef, Vec<u32>>,
+    accessed_types: BTreeMap<u32, AccessedType>,
 }
 
 impl Visitor for CollectAccessedTypes {
@@ -120,126 +137,112 @@ impl Visitor for CollectAccessedTypes {
     fn visit_bool<'scale, 'resolver>(
         mut self,
         _value: bool,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_char<'scale, 'resolver>(
         mut self,
         _value: char,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u8<'scale, 'resolver>(
         mut self,
         _value: u8,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u16<'scale, 'resolver>(
         mut self,
         _value: u16,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u32<'scale, 'resolver>(
         mut self,
         _value: u32,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u64<'scale, 'resolver>(
         mut self,
         _value: u64,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u128<'scale, 'resolver>(
         mut self,
         _value: u128,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_u256<'scale, 'resolver>(
         mut self,
         _value: &'scale [u8; 32],
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i8<'scale, 'resolver>(
         mut self,
         _value: i8,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i16<'scale, 'resolver>(
         mut self,
         _value: i16,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i32<'scale, 'resolver>(
         mut self,
         _value: i32,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i64<'scale, 'resolver>(
         mut self,
         _value: i64,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i128<'scale, 'resolver>(
         mut self,
         _value: i128,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
     fn visit_i256<'scale, 'resolver>(
         mut self,
         _value: &'scale [u8; 32],
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
@@ -248,7 +251,12 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Sequence<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types.insert(
+            type_id
+                .id()
+                .expect("Sequence is always referenced by id; qed"),
+            AccessedType::Other,
+        );
 
         value.decode_item(self.clone()).unwrap_or(Ok(self))
     }
@@ -258,7 +266,12 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Composite<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types.insert(
+            type_id
+                .id()
+                .expect("Composite is always referenced by id; qed"),
+            AccessedType::Other,
+        );
 
         let mut visitor = self;
         while let Some(v) = value.decode_item(visitor.clone()) {
@@ -273,7 +286,10 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Tuple<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types.insert(
+            type_id.id().expect("Tuple is always referenced by id; qed"),
+            AccessedType::Other,
+        );
 
         let mut visitor = self;
         while let Some(v) = value.decode_item(visitor.clone()) {
@@ -286,9 +302,8 @@ impl Visitor for CollectAccessedTypes {
     fn visit_str<'scale, 'resolver>(
         mut self,
         _value: &mut scale_decode::visitor::types::Str<'scale>,
-        type_id: &TypeRef,
+        _type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
         Ok(self)
     }
 
@@ -297,7 +312,14 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Variant<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types
+            .entry(
+                type_id
+                    .id()
+                    .expect("Enumeration is always referenced by id; qed"),
+            )
+            .or_insert_with(|| AccessedType::Enumeration(Default::default()))
+            .add_variant(value.index() as u32);
 
         let mut visitor = self;
         while let Some(v) = value.fields().decode_item(visitor.clone()) {
@@ -312,7 +334,12 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Array<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types.insert(
+            type_id
+                .id()
+                .expect("BitSequence is always referenced by id; qed"),
+            AccessedType::Other,
+        );
 
         let mut visitor = self;
         while let Some(v) = value.decode_item(visitor.clone()) {
@@ -326,14 +353,19 @@ impl Visitor for CollectAccessedTypes {
         _value: &mut scale_decode::visitor::types::BitSequence<'scale>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
-        self.accessed_types.insert(*type_id);
+        self.accessed_types.insert(
+            type_id
+                .id()
+                .expect("BitSequence is always referenced by id; qed"),
+            AccessedType::Other,
+        );
         Ok(self)
     }
 }
 
 pub fn decode_extrinsic_and_collect_type_ids(
-    extrinsic: &[u8],
+    mut extrinsic: &[u8],
     type_information: &TypeInformation,
 ) -> Vec<u32> {
-    todo!()
+    let length = Compact::<u32>::decode(&mut extrinsic);
 }
