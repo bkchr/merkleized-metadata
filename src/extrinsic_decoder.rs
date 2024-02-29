@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use codec::{Compact, Decode};
+use codec::{Compact, Decode, Input};
 use scale_decode::{
     ext::scale_type_resolver::{
         BitsOrderFormat, BitsStoreFormat, Primitive as RPrimitive, ResolvedTypeVisitor, Variant,
     },
-    visitor::DecodeError,
+    visitor::{decode_with_visitor, DecodeError},
     Field, TypeResolver, Visitor,
 };
 
@@ -124,7 +124,7 @@ impl AccessedType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct CollectAccessedTypes {
     accessed_types: BTreeMap<u32, AccessedType>,
 }
@@ -365,7 +365,89 @@ impl Visitor for CollectAccessedTypes {
 
 pub fn decode_extrinsic_and_collect_type_ids(
     mut extrinsic: &[u8],
+    mut additional_signed: Option<&[u8]>,
     type_information: &TypeInformation,
-) -> Vec<u32> {
-    let length = Compact::<u32>::decode(&mut extrinsic);
+) -> Result<Vec<(u32, Vec<u32>)>, String> {
+    let _length = Compact::<u32>::decode(&mut extrinsic)
+        .map_err(|e| format!("Failed to read length: {e}"))?;
+
+    let version = (&mut extrinsic)
+        .read_byte()
+        .map_err(|e| format!("Failed to read version byte: {e}"))?;
+
+    let is_signed = version & 0b1000_0000 != 0;
+    let version = version & 0b0111_1111;
+    if version != 4 {
+        return Err("Invalid transaction version".into());
+    }
+
+    let visitor = is_signed
+        .then(|| {
+            let visitor = decode_with_visitor(
+                &mut extrinsic,
+                &type_information.extrinsic_metadata.address_ty,
+                type_information,
+                CollectAccessedTypes::default(),
+            )
+            .map_err(|e| format!("Failed to decode address: {e}"))?;
+
+            let visitor = decode_with_visitor(
+                &mut extrinsic,
+                &type_information.extrinsic_metadata.signature_ty,
+                type_information,
+                visitor,
+            )
+            .map_err(|e| format!("Failed to decode signature: {e}"))?;
+
+            type_information
+                .extrinsic_metadata
+                .signed_extensions
+                .iter()
+                .try_fold(visitor, |visitor, se| {
+                    decode_with_visitor(
+                        &mut extrinsic,
+                        &se.included_in_extrinsic,
+                        type_information,
+                        visitor,
+                    )
+                    .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
+                })
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    let visitor = decode_with_visitor(
+        &mut extrinsic,
+        &type_information.extrinsic_metadata.call_ty,
+        type_information,
+        visitor,
+    )
+    .map_err(|e| format!("Failed to decode signature: {e}"))?;
+
+    let visitor = additional_signed
+        .map(|mut additional| {
+            type_information
+                .extrinsic_metadata
+                .signed_extensions
+                .iter()
+                .try_fold(visitor, |visitor, se| {
+                    decode_with_visitor(
+                        &mut additional,
+                        &se.included_in_extrinsic,
+                        type_information,
+                        visitor,
+                    )
+                    .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
+                })
+        })
+        .unwrap_or_else(|| Ok(visitor))?;
+
+    Ok(visitor
+        .accessed_types
+        .into_iter()
+        .map(|(id, ty)| match ty {
+            AccessedType::Other => (id, Vec::new()),
+            AccessedType::Enumeration(variants) => (id, variants.into_iter().collect()),
+        })
+        .collect())
 }
