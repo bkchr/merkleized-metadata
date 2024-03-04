@@ -26,14 +26,14 @@ pub struct FrameMetadataPrepared {
 }
 
 impl FrameMetadataPrepared {
-    pub fn prepare(metadata: RuntimeMetadata) -> Result<Self, String> {
+    pub fn prepare(metadata: &RuntimeMetadata) -> Result<Self, String> {
         let metadata = match metadata {
             RuntimeMetadata::V15(m) => m,
             _ => return Err("Only supports metadata V15".into()),
         };
 
-        let frame_type_registry = metadata.types;
-        let extrinsic_metadata = metadata.extrinsic;
+        let frame_type_registry = metadata.types.clone();
+        let extrinsic_metadata = metadata.extrinsic.clone();
 
         let mut accessible_types = Default::default();
 
@@ -99,11 +99,13 @@ impl FrameMetadataPrepared {
                 self.get_type(*frame_id)
                     .as_basic_type(type_context)
                     .into_iter()
-                    .map(|ty| {
+                    .map(|mut ty| {
+                        ty.type_id = id.into();
+
                         let id = if let Some(variant) = ty.type_def.as_enumeration() {
                             TypeId::Enumeration {
                                 type_id: *id,
-                                variant: variant.index as u32,
+                                variant: variant.index.0,
                             }
                         } else {
                             TypeId::Other(*id)
@@ -260,6 +262,7 @@ impl AsBasicType for Type<PortableForm> {
                     .map(|v| types::Type {
                         path: path.clone(),
                         type_def: types::TypeDef::Enumeration(v.as_basic_type(context)),
+                        type_id: 0u32.into(),
                     })
                     .collect::<Vec<_>>();
             }
@@ -279,7 +282,11 @@ impl AsBasicType for Type<PortableForm> {
             TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type(context)),
         };
 
-        vec![types::Type { path, type_def }]
+        vec![types::Type {
+            path,
+            type_def,
+            type_id: 0u32.into(),
+        }]
     }
 }
 
@@ -324,7 +331,7 @@ impl AsBasicType for Variant<PortableForm> {
                 .iter()
                 .map(|f| f.as_basic_type(context))
                 .collect(),
-            index: self.index,
+            index: (self.index as u32).into(),
         }
     }
 }

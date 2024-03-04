@@ -84,20 +84,28 @@ impl scale_decode::TypeResolver for TypeResolver {
                 name: f.name.as_deref(),
                 id: &f.ty,
             })),
-            TypeDef::Enumeration(_) => visitor.visit_variant(types.iter().map(|t| {
-                let TypeDef::Enumeration(v) = &t.type_def else {
-                    panic!("AHH")
-                };
-
-                Variant {
-                    index: v.index,
-                    name: &v.name,
-                    fields: v.fields.iter().map(|f| Field {
-                        name: f.name.as_deref(),
-                        id: &f.ty,
-                    }),
+            TypeDef::Enumeration(_) => {
+                if types.iter().any(|t| t.type_def.as_enumeration().is_none()) {
+                    return Err(format!(
+                        "All type defs of {type_id} must be an `Enumeration`"
+                    ));
                 }
-            })),
+
+                visitor.visit_variant(types.iter().map(|t| {
+                    let TypeDef::Enumeration(v) = &t.type_def else {
+                        panic!("Checked above to be an `Enumeration`; qed")
+                    };
+
+                    Variant {
+                        index: v.index.0 as _,
+                        name: &v.name,
+                        fields: v.fields.iter().map(|f| Field {
+                            name: f.name.as_deref(),
+                            id: &f.ty,
+                        }),
+                    }
+                }))
+            }
             TypeDef::Sequence(s) => visitor.visit_sequence(&s),
             TypeDef::Tuple(t) => visitor.visit_tuple(t.iter()),
             TypeDef::BitSequence(b) => {
@@ -270,7 +278,7 @@ impl Visitor for CollectAccessedTypes {
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
         // We forward `Void` as composite with no fields.
         if value.remaining() == 0 {
-            return Ok(self)
+            return Ok(self);
         }
 
         self.accessed_types.insert(TypeId::Other(

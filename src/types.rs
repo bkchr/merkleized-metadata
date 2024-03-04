@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+
 
 use codec::{Compact, Encode};
 
@@ -108,7 +108,7 @@ pub struct Field {
 pub struct EnumerationVariant {
     pub name: String,
     pub fields: Vec<Field>,
-    pub index: u8,
+    pub index: Compact<u32>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
@@ -129,9 +129,12 @@ pub struct Type {
     pub path: Vec<String>,
     /// The actual type definition
     pub type_def: TypeDef,
+    /// The unique id of this type.
+    pub type_id: Compact<u32>,
 }
 
 impl Type {
+    /// Returns the hash of this type.
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
     }

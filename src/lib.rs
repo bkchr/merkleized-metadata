@@ -1,9 +1,9 @@
-use codec::Compact;
+
 use extrinsic_decoder::decode_extrinsic_and_collect_type_ids;
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
-use merkle_tree::{MerkleTree, MerkleTreeNode, Proof};
-use types::{Hash, MetadataDigest};
+use merkle_tree::{MerkleTree, Proof};
+use types::{MetadataDigest};
 
 mod extrinsic_decoder;
 mod from_frame_metadata;
@@ -22,7 +22,7 @@ pub struct ExtraInfo {
 
 /// Generate the [`MetadataDigest`] using the given `extra_info`.
 pub fn generate_metadata_digest(
-    metadata: RuntimeMetadata,
+    metadata: &RuntimeMetadata,
     extra_info: ExtraInfo,
 ) -> Result<MetadataDigest, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
@@ -48,7 +48,7 @@ pub fn generate_metadata_digest(
 pub fn generate_proof_for_extrinsic(
     extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
-    metadata: RuntimeMetadata,
+    metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
 
@@ -71,27 +71,27 @@ mod tests {
     const FIXTURES: &[(&str, &str)] = &[
         (
             "rococo_metadata_v15",
-            "0xa05d63fe8bc95c3b9e2aee8ecebcbad63ff1df4eff7c43d9f010baf79e607bf7",
+            "0x44e94d23868edef1b342ff8ee87832dce82676953b4a333736d108866106b91c",
         ),
         (
             "polkadot_metadata_v15",
-            "0x3fcef0c2652a3872fbbc66088045274f861b6ca32b41f539ce10d2f56f005164",
+            "0xacd252bffb7e6e2e3f5559d6d30557418481c87035382b57cd4d9bf1b5391341",
         ),
         (
             "kusama_metadata_v15",
-            "0x11ac2d8295859989d83270650809af3574e2be887f496aaadbd5a08c9027e648",
+            "0x5e38a03134f914e2ce185781a2e8359a1b5c8bbaffb421d75d1bbb9f86902ae7",
         ),
         (
             "acala_metadata_v15",
-            "0x31fc11b76744a8bc32517bf0a7840b55b838744d709e85e086dfa2593e43c52f",
+            "0xb5fe33037ef4fe0a243d0353b17770384c41380b4acfc304b7eae2d378a1d135",
         ),
         (
             "moonbeam_metadata_v15",
-            "0x2436f5a75162862f6026643e82b63311eb2d6f20ef64e243d8bfd037e09aadfe",
+            "0x13f0aece8a3f0fb81e93ff8e2a0431a5a6a9570fb7f777739bbde65ab92a592f",
         ),
         (
             "hydradx_metadata_v15",
-            "0xc22e4363353142b40d66faa738170b42a230457c521fffae857c901cf9137c12",
+            "0x561190a68670c04aa8afe1208218a0f4a591b5e5a3ce4aa941ff32c6d3c09238",
         ),
     ];
 
@@ -123,9 +123,31 @@ mod tests {
                 .unwrap()
                 .1;
 
-            let digest = generate_metadata_digest(metadata, extra_info.clone()).unwrap();
-
+            let digest = generate_metadata_digest(&metadata, extra_info.clone()).unwrap();
             assert_eq!(*expected_hash, array_bytes::bytes2hex("0x", &digest.hash()));
+
+            let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+
+            let type_information = prepared.as_type_information();
+            type_information
+                .types
+                .values()
+                .fold(None, |p, v| match p {
+                    None => Some(v.clone()),
+                    Some(p) => {
+                        if p.type_id.0 < v.type_id.0
+                            || p.type_def
+                                .as_enumeration()
+                                .and_then(|p| v.type_def.as_enumeration().map(|v| (p, v)))
+                                .map_or(false, |(p, v)| p.index.0 < v.index.0)
+                        {
+                            Some(v.clone())
+                        } else {
+                            panic!("Invalid: {:?} < {:?}", p, v)
+                        }
+                    }
+                })
+                .unwrap();
         }
     }
 
@@ -154,10 +176,11 @@ mod tests {
             .unwrap()
             .1;
 
-        let proof = generate_proof_for_extrinsic(
+        let _proof = generate_proof_for_extrinsic(
             &array_bytes::hex2bytes(ext).unwrap(),
             Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
-            metadata
-        ).unwrap();
+            &metadata,
+        )
+        .unwrap();
     }
 }
