@@ -1,9 +1,8 @@
-
 use extrinsic_decoder::decode_extrinsic_and_collect_type_ids;
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
 use merkle_tree::{MerkleTree, Proof};
-use types::{MetadataDigest};
+use types::MetadataDigest;
 
 mod extrinsic_decoder;
 mod from_frame_metadata;

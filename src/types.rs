@@ -1,5 +1,3 @@
-
-
 use codec::{Compact, Encode};
 
 /// A reference to a type in the registry.
