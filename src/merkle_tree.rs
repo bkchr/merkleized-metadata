@@ -1,12 +1,9 @@
 use std::{
     cmp::Ordering,
-    collections::{
-        btree_map::{Entry, OccupiedEntry},
-        BTreeMap, BTreeSet, VecDeque,
-    },
+    collections::{BTreeMap, BTreeSet, VecDeque},
 };
 
-use crate::types::{Hash, Type, TypeDef};
+use crate::types::{Hash, Type};
 use codec::{Compact, Encode};
 
 /// A node of a [`MerkleTree`].
@@ -84,22 +81,18 @@ pub struct Proof {
 pub struct MerkleTree {
     root_hash: Hash,
     nodes: BTreeMap<Hash, MerkleTreeNode>,
-    hash_to_type_ids: BTreeMap<Hash, Vec<TypeId>>,
-    type_id_to_hash: BTreeMap<TypeId, Hash>,
+    hash_to_type_ids: BTreeMap<Hash, BTreeSet<TypeId>>,
 }
 
 impl MerkleTree {
     pub fn new(leaves: impl IntoIterator<Item = (TypeId, Type)>) -> Self {
-        let mut hash_to_type_ids = BTreeMap::default();
-        let mut type_id_to_hash = BTreeMap::default();
+        let mut hash_to_type_ids = BTreeMap::<Hash, BTreeSet<TypeId>>::default();
         let mut nodes = BTreeMap::default();
 
         let mut intermediate_nodes = leaves
             .into_iter()
             .enumerate()
             .map(|(leaf_index, (type_id, ty))| {
-                let maybe_variant_index = ty.type_def.as_enumeration().map(|v| v.index);
-
                 let element = MerkleTreeNode::Leaf {
                     ty,
                     leaf_index: (leaf_index as u32).into(),
@@ -107,9 +100,7 @@ impl MerkleTree {
                 };
 
                 let hash = element.hash();
-                hash_to_type_ids.insert(hash, vec![type_id]);
-
-                type_id_to_hash.insert(type_id, hash);
+                hash_to_type_ids.entry(hash).or_default().insert(type_id);
 
                 nodes.insert(hash, element);
 
@@ -149,7 +140,6 @@ impl MerkleTree {
         Self {
             root_hash,
             nodes,
-            type_id_to_hash,
             hash_to_type_ids,
         }
     }
@@ -164,10 +154,12 @@ impl MerkleTree {
         for type_id in type_ids.into_iter() {
             let mut process_node = self.root_hash;
             loop {
-                let node = self
-                    .nodes
-                    .get(&process_node)
-                    .ok_or_else(|| format!("Could not find node for hash: {process_node:?}"))?;
+                let node = self.nodes.get(&process_node).ok_or_else(|| {
+                    format!(
+                        "Could not find node for hash: {}",
+                        array_bytes::bytes2hex("0x", &process_node)
+                    )
+                })?;
 
                 nodes.insert(node.clone());
 
@@ -185,10 +177,13 @@ impl MerkleTree {
                             .get(right)
                             .map_or(false, |tids| tids.contains(&type_id))
                         {
-                            process_node = *left;
+                            process_node = *right;
                             continue;
                         } else {
-                            return Err(format!("Could not find type_id ({type_id:?}) from node ({process_node:?})."));
+                            return Err(format!(
+                                "Could not find type_id `{type_id:?}` from node `{}`.",
+                                array_bytes::bytes2hex("0x", process_node)
+                            ));
                         }
                     }
                     // We captured the leaf we are interested in.
