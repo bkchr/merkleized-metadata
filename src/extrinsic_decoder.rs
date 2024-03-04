@@ -268,6 +268,11 @@ impl Visitor for CollectAccessedTypes {
         value: &mut scale_decode::visitor::types::Composite<'scale, 'resolver, Self::TypeResolver>,
         type_id: &TypeRef,
     ) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+        // We forward `Void` as composite with no fields.
+        if value.remaining() == 0 {
+            return Ok(self)
+        }
+
         self.accessed_types.insert(TypeId::Other(
             type_id
                 .id()
