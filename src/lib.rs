@@ -20,7 +20,7 @@ pub struct ExtraInfo {
     pub token_symbol: String,
 }
 
-/// Generate the [`MetadataDigest`].
+/// Generate the [`MetadataDigest`] using the given `extra_info`.
 pub fn generate_metadata_digest(
     metadata: RuntimeMetadata,
     extra_info: ExtraInfo,
@@ -29,12 +29,7 @@ pub fn generate_metadata_digest(
 
     let type_information = prepared.as_type_information();
 
-    let tree_root = MerkleTree::new(
-        type_information
-            .types
-            .into_iter()
-    )
-    .root();
+    let tree_root = MerkleTree::new(type_information.types.into_iter()).root();
 
     Ok(MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -47,6 +42,9 @@ pub fn generate_metadata_digest(
     })
 }
 
+/// Generate a proof for the given `extrinsic` using the given `metadata`.
+///
+/// `additonal_signed` can be passed as well to include the types required for decoding it in the proof as well.
 pub fn generate_proof_for_extrinsic(
     extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
