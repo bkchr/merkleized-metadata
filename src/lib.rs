@@ -33,8 +33,6 @@ pub fn generate_metadata_digest(
         type_information
             .types
             .into_iter()
-            .map(|(k, v)| v.into_iter().map(move |v| (k, v)))
-            .flatten(),
     )
     .root();
 

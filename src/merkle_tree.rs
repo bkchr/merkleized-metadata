@@ -1,6 +1,9 @@
-use std::collections::{
-    btree_map::{Entry, OccupiedEntry},
-    BTreeMap, BTreeSet, VecDeque,
+use std::{
+    cmp::Ordering,
+    collections::{
+        btree_map::{Entry, OccupiedEntry},
+        BTreeMap, BTreeSet, VecDeque,
+    },
 };
 
 use crate::types::{Hash, Type, TypeDef};
@@ -29,10 +32,47 @@ impl MerkleTreeNode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypeId {
     Enumeration { type_id: u32, variant: u32 },
     Other(u32),
+}
+
+impl TypeId {
+    /// Returns the actual `type_id`.
+    pub fn type_id(&self) -> u32 {
+        match self {
+            Self::Enumeration { type_id, .. } => *type_id,
+            Self::Other(id) => *id,
+        }
+    }
+}
+
+impl PartialOrd for TypeId {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TypeId {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (
+                Self::Enumeration { type_id, variant },
+                Self::Enumeration {
+                    type_id: type_id_o,
+                    variant: variant_o,
+                },
+            ) => {
+                if type_id == type_id_o {
+                    variant.cmp(variant_o)
+                } else {
+                    type_id.cmp(type_id_o)
+                }
+            }
+            (s, o) => s.type_id().cmp(&o.type_id()),
+        }
+    }
 }
 
 /// A proof containing all the nodes to decode a specific extrinsic.
@@ -49,7 +89,7 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-    pub fn new(leaves: impl IntoIterator<Item = (u32, Type)>) -> Self {
+    pub fn new(leaves: impl IntoIterator<Item = (TypeId, Type)>) -> Self {
         let mut hash_to_type_ids = BTreeMap::default();
         let mut type_id_to_hash = BTreeMap::default();
         let mut nodes = BTreeMap::default();
@@ -63,16 +103,8 @@ impl MerkleTree {
                 let element = MerkleTreeNode::Leaf {
                     ty,
                     leaf_index: (leaf_index as u32).into(),
-                    type_id: type_id.into(),
+                    type_id: type_id.type_id().into(),
                 };
-
-                let type_id = maybe_variant_index.map_or_else(
-                    || TypeId::Other(type_id),
-                    |v| TypeId::Enumeration {
-                        type_id,
-                        variant: v as u32,
-                    },
-                );
 
                 let hash = element.hash();
                 hash_to_type_ids.insert(hash, vec![type_id]);

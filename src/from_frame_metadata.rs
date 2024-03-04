@@ -9,16 +9,14 @@ use scale_info::{
     TypeDefArray, TypeDefBitSequence, TypeDefPrimitive, Variant,
 };
 
-use crate::types;
+use crate::{merkle_tree::TypeId, types};
 
 /// The type information generated from the FRAME metadata.
 pub struct TypeInformation {
     /// The extrinsic metadata in the final form.
     pub extrinsic_metadata: types::ExtrinsicMetadata,
-    /// The mapping from ID to the final types.
-    ///
-    /// Only [`Type::Enumeration`](types::Type::Enumeration) will have a vector with length > 1.
-    pub types: BTreeMap<u32, Vec<types::Type>>,
+    /// All the types.
+    pub types: BTreeMap<TypeId, types::Type>,
 }
 
 pub struct FrameMetadataPrepared {
@@ -97,7 +95,24 @@ impl FrameMetadataPrepared {
         let extrinsic_metadata = self.extrinsic_metadata.as_basic_type(type_context);
         let types = frame_id_to_id
             .iter()
-            .map(|(frame_id, id)| (*id, self.get_type(*frame_id).as_basic_type(type_context)))
+            .map(|(frame_id, id)| {
+                self.get_type(*frame_id)
+                    .as_basic_type(type_context)
+                    .into_iter()
+                    .map(|ty| {
+                        let id = if let Some(variant) = ty.type_def.as_enumeration() {
+                            TypeId::Enumeration {
+                                type_id: *id,
+                                variant: variant.index as u32,
+                            }
+                        } else {
+                            TypeId::Other(*id)
+                        };
+
+                        (id, ty)
+                    })
+            })
+            .flatten()
             .collect::<BTreeMap<_, _>>();
 
         TypeInformation {

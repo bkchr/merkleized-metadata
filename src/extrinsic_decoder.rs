@@ -6,16 +6,34 @@ use scale_decode::{
         BitsOrderFormat, BitsStoreFormat, Primitive as RPrimitive, ResolvedTypeVisitor, Variant,
     },
     visitor::{decode_with_visitor, DecodeError},
-    Field, TypeResolver, Visitor,
+    Field, Visitor,
 };
 
 use crate::{
     from_frame_metadata::TypeInformation,
     merkle_tree::TypeId,
-    types::{TypeDef, TypeRef},
+    types::{Type, TypeDef, TypeRef},
 };
 
-impl TypeResolver for TypeInformation {
+struct TypeResolver {
+    raw_type_id_to_types: BTreeMap<u32, Vec<Type>>,
+}
+
+impl TypeResolver {
+    fn new(type_information: &TypeInformation) -> Self {
+        Self {
+            raw_type_id_to_types: type_information.types.iter().fold(
+                Default::default(),
+                |mut map, (id, ty)| {
+                    map.entry(id.type_id()).or_default().push(ty.clone());
+                    map
+                },
+            ),
+        }
+    }
+}
+
+impl scale_decode::TypeResolver for TypeResolver {
     type TypeId = TypeRef;
 
     type Error = String;
@@ -51,7 +69,7 @@ impl TypeResolver for TypeInformation {
         };
 
         let types = self
-            .types
+            .raw_type_id_to_types
             .get(&type_id)
             .ok_or_else(|| format!("Unknown type id {type_id}"))?;
 
@@ -80,7 +98,7 @@ impl TypeResolver for TypeInformation {
                     }),
                 }
             })),
-            TypeDef::Sequence(s) => visitor.visit_sequence(s),
+            TypeDef::Sequence(s) => visitor.visit_sequence(&s),
             TypeDef::Tuple(t) => visitor.visit_tuple(t.iter()),
             TypeDef::BitSequence(b) => {
                 let store_format = match b.num_bytes {
@@ -115,7 +133,7 @@ struct CollectAccessedTypes {
 }
 
 impl Visitor for CollectAccessedTypes {
-    type TypeResolver = TypeInformation;
+    type TypeResolver = TypeResolver;
     type Value<'scale, 'resolver> = Self;
     type Error = DecodeError;
 
@@ -346,6 +364,8 @@ pub fn decode_extrinsic_and_collect_type_ids(
     additional_signed: Option<&[u8]>,
     type_information: &TypeInformation,
 ) -> Result<Vec<TypeId>, String> {
+    let type_resolver = TypeResolver::new(type_information);
+
     let _length = Compact::<u32>::decode(&mut extrinsic)
         .map_err(|e| format!("Failed to read length: {e}"))?;
 
@@ -364,7 +384,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
             let visitor = decode_with_visitor(
                 &mut extrinsic,
                 &type_information.extrinsic_metadata.address_ty,
-                type_information,
+                &type_resolver,
                 CollectAccessedTypes::default(),
             )
             .map_err(|e| format!("Failed to decode address: {e}"))?;
@@ -372,7 +392,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
             let visitor = decode_with_visitor(
                 &mut extrinsic,
                 &type_information.extrinsic_metadata.signature_ty,
-                type_information,
+                &type_resolver,
                 visitor,
             )
             .map_err(|e| format!("Failed to decode signature: {e}"))?;
@@ -385,7 +405,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
                     decode_with_visitor(
                         &mut extrinsic,
                         &se.included_in_extrinsic,
-                        type_information,
+                        &type_resolver,
                         visitor,
                     )
                     .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
@@ -397,7 +417,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
     let visitor = decode_with_visitor(
         &mut extrinsic,
         &type_information.extrinsic_metadata.call_ty,
-        type_information,
+        &type_resolver,
         visitor,
     )
     .map_err(|e| format!("Failed to decode signature: {e}"))?;
@@ -412,7 +432,7 @@ pub fn decode_extrinsic_and_collect_type_ids(
                     decode_with_visitor(
                         &mut additional,
                         &se.included_in_extrinsic,
-                        type_information,
+                        &type_resolver,
                         visitor,
                     )
                     .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
