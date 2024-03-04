@@ -60,7 +60,7 @@ pub fn generate_proof_for_extrinsic(
         &prepared.as_type_information(),
     )?;
 
-    todo!()
+    MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
 }
 
 #[cfg(test)]
