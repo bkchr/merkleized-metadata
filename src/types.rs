@@ -86,6 +86,17 @@ pub enum TypeDef {
     BitSequence(TypeDefBitSequence),
 }
 
+impl TypeDef {
+    /// Returns `self` as [`EnumerationVariant`] or `None` if this isn't an `Enumeration`.
+    pub fn as_enumeration(&self) -> Option<&EnumerationVariant> {
+        if let Self::Enumeration(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub struct Field {
     pub name: Option<String>,
@@ -168,22 +179,4 @@ impl MetadataDigest {
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
     }
-}
-
-/// Calculates the root of the tree defined by the given `leaves`.
-pub fn calculate_root(leaves: impl IntoIterator<Item = Hash>) -> Hash {
-    let mut nodes = leaves.into_iter().collect::<VecDeque<_>>();
-
-    while nodes.len() > 1 {
-        let left = nodes
-            .pop_front()
-            .expect("We have more than one element; qed");
-        let right = nodes
-            .pop_front()
-            .expect("We have more than one element; qed");
-
-        nodes.push_back(blake3::hash(&(Hash::from(left), right).encode()).into());
-    }
-
-    nodes.pop_back().unwrap_or_default()
 }

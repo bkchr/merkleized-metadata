@@ -1,10 +1,13 @@
 use codec::Compact;
+use extrinsic_decoder::decode_extrinsic_and_collect_type_ids;
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
+use merkle_tree::{MerkleTree, MerkleTreeNode, Proof};
 use types::{Hash, MetadataDigest};
 
 mod extrinsic_decoder;
 mod from_frame_metadata;
+mod merkle_tree;
 mod types;
 
 /// Extra information that is required to generate the [`MetadataDigest`].
@@ -26,8 +29,14 @@ pub fn generate_metadata_digest(
 
     let type_information = prepared.as_type_information();
 
-    let tree_root =
-        types::calculate_root(type_information.types.values().flatten().map(|t| t.hash()));
+    let tree_root = MerkleTree::new(
+        type_information
+            .types
+            .into_iter()
+            .map(|(k, v)| v.into_iter().map(move |v| (k, v)))
+            .flatten(),
+    )
+    .root();
 
     Ok(MetadataDigest::V1 {
         types_tree_root: tree_root,
@@ -40,32 +49,19 @@ pub fn generate_metadata_digest(
     })
 }
 
-/// All the possible elements of a merkle tree.
-pub enum MerkleTreeElement {
-    Node {
-        left: Hash,
-        right: Hash,
-    },
-    Leaf {
-        leaf_index: Compact<u32>,
-        type_id: Compact<u32>,
-        ty: types::Type,
-    },
-}
-
-/// A proof containing all the tree elements to decode a specific extrinsic.
-///
-/// The root of the tree is [`MetadataDigest::V1::types_tree_root`].
-pub struct Proof {
-    /// All the tree elements required to decode the extrinsic.
-    pub tree_elements: Vec<MerkleTreeElement>,
-}
-
 pub fn generate_proof_for_extrinsic(
     extrinsic: &[u8],
+    additional_signed: Option<&[u8]>,
     metadata: RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
+
+    let accessed_types = decode_extrinsic_and_collect_type_ids(
+        extrinsic,
+        additional_signed,
+        &prepared.as_type_information(),
+    )?;
+
     todo!()
 }
 
