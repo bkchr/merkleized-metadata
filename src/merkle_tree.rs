@@ -15,7 +15,6 @@ pub enum MerkleTreeNode {
     },
     Leaf {
         leaf_index: Compact<u32>,
-        type_id: Compact<u32>,
         ty: Type,
     },
 }
@@ -96,7 +95,6 @@ impl MerkleTree {
                 let element = MerkleTreeNode::Leaf {
                     ty,
                     leaf_index: (leaf_index as u32).into(),
-                    type_id: type_id.type_id().into(),
                 };
 
                 let hash = element.hash();
