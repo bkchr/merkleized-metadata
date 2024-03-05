@@ -1,3 +1,4 @@
+use alloc::{string::String, vec::Vec};
 use codec::{Compact, Encode};
 
 /// A reference to a type in the registry.

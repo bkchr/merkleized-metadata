@@ -1,5 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
-
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use frame_metadata::{
     v15::{ExtrinsicMetadata, SignedExtensionMetadata},
     RuntimeMetadata,
@@ -370,12 +374,12 @@ impl AsBasicType for TypeDefBitSequence<PortableForm> {
 
         types::TypeDefBitSequence {
             num_bytes,
-            least_significant_bit_first: context
+            least_significant_bit_first: *context
                 .get_type(self.bit_order_type.id)
                 .path
                 .segments
                 .iter()
-                .find(|p| *p == "Lsb0" || *p == "Msb0")
+                .find(|p| **p == "Lsb0" || **p == "Msb0")
                 .expect("`bit_order_type` is either `Lsb0` or `Msb0`")
                 == "Lsb0",
         }

@@ -1,5 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
-
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    format,
+    string::String,
+    vec::Vec,
+};
 use codec::{Compact, Decode, Input};
 use scale_decode::{
     ext::scale_type_resolver::{

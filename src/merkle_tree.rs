@@ -1,22 +1,18 @@
-use std::{
-    cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-};
-
 use crate::types::{Hash, Type};
+use alloc::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    format,
+    string::String,
+    vec::Vec,
+};
 use codec::{Compact, Encode};
+use core::cmp::Ordering;
 
 /// A node of a [`MerkleTree`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum MerkleTreeNode {
-    Node {
-        left: Hash,
-        right: Hash,
-    },
-    Leaf {
-        leaf_index: Compact<u32>,
-        ty: Type,
-    },
+    Node { left: Hash, right: Hash },
+    Leaf { leaf_index: Compact<u32>, ty: Type },
 }
 
 impl MerkleTreeNode {
