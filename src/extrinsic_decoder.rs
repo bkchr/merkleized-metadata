@@ -69,6 +69,7 @@ impl scale_decode::TypeResolver for TypeResolver {
             TypeRef::CompactU32 => return Ok(visitor.visit_compact(&TypeRef::U32)),
             TypeRef::CompactU64 => return Ok(visitor.visit_compact(&TypeRef::U64)),
             TypeRef::CompactU128 => return Ok(visitor.visit_compact(&TypeRef::U128)),
+            TypeRef::CompactU256 => return Err("CompactU256 not supported right now".into()),
             TypeRef::Void => return Ok(visitor.visit_composite(core::iter::empty())),
         };
 
