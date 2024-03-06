@@ -75,27 +75,27 @@ mod tests {
     const FIXTURES: &[(&str, &str)] = &[
         (
             "rococo_metadata_v15",
-            "0x44e94d23868edef1b342ff8ee87832dce82676953b4a333736d108866106b91c",
+            "0xd92311221570b2e7ccf151d5c77db3d5ebee253655947730eb17f74fcb2f9d07",
         ),
         (
             "polkadot_metadata_v15",
-            "0xacd252bffb7e6e2e3f5559d6d30557418481c87035382b57cd4d9bf1b5391341",
+            "0xec41c92ce1869ed982c0a21b854e3aa79b2a072e9a8a73696e371f7125d17326",
         ),
         (
             "kusama_metadata_v15",
-            "0x5e38a03134f914e2ce185781a2e8359a1b5c8bbaffb421d75d1bbb9f86902ae7",
+            "0x926b3fc004ffab7ef4936b657923b7f4a4992ee0034f02bcfc8512df1180822e",
         ),
         (
             "acala_metadata_v15",
-            "0xb5fe33037ef4fe0a243d0353b17770384c41380b4acfc304b7eae2d378a1d135",
+            "0x8b0346fffc8e7d6b09d36f94e733cf274698e09a97d667b2ee8fca11e4b7de96",
         ),
         (
             "moonbeam_metadata_v15",
-            "0x13f0aece8a3f0fb81e93ff8e2a0431a5a6a9570fb7f777739bbde65ab92a592f",
+            "0x57e55d2698425541a2e0ea2a397c8d1f62a0c71bc404b345f3dff80dddb2865d",
         ),
         (
             "hydradx_metadata_v15",
-            "0x561190a68670c04aa8afe1208218a0f4a591b5e5a3ce4aa941ff32c6d3c09238",
+            "0x8b979110754d54fa39684032deba6f352013f98f9d735417e2bf367a28a216b7",
         ),
     ];
 

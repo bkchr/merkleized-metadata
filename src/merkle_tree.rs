@@ -84,7 +84,7 @@ impl MerkleTree {
         let mut hash_to_type_ids = BTreeMap::<Hash, BTreeSet<TypeId>>::default();
         let mut nodes = BTreeMap::default();
 
-        let mut intermediate_nodes = leaves
+        let mut leaves = leaves
             .into_iter()
             .enumerate()
             .map(|(leaf_index, (type_id, ty))| {
@@ -102,18 +102,18 @@ impl MerkleTree {
             })
             .collect::<VecDeque<_>>();
 
-        while intermediate_nodes.len() > 1 {
-            let left = intermediate_nodes
-                .pop_front()
+        let mut intermediate_nodes = VecDeque::new();
+
+        while leaves.len() > 1 {
+            let right = leaves
+                .pop_back()
                 .expect("We have more than one element; qed");
-            let right = intermediate_nodes
-                .pop_front()
+            let left = leaves
+                .pop_back()
                 .expect("We have more than one element; qed");
 
             let element = MerkleTreeNode::Node { left, right };
             let hash = element.hash();
-
-            intermediate_nodes.push_back(hash);
 
             hash_to_type_ids.insert(
                 hash,
@@ -127,6 +127,38 @@ impl MerkleTree {
             );
 
             nodes.insert(hash, element);
+            intermediate_nodes.push_back(hash);
+        }
+
+        if let Some(leaf) = leaves.pop_back() {
+            intermediate_nodes.push_front(leaf);
+        }
+
+        while intermediate_nodes.len() > 1 {
+            let right = intermediate_nodes
+                .pop_front()
+                .expect("We have more than one element; qed");
+            let left = intermediate_nodes
+                .pop_front()
+                .expect("We have more than one element; qed");
+
+            let element = MerkleTreeNode::Node { left, right };
+            let hash = element.hash();
+
+            hash_to_type_ids.insert(
+                hash,
+                hash_to_type_ids
+                    .get(&left)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .chain(hash_to_type_ids.get(&right).cloned().unwrap_or_default())
+                    .collect(),
+            );
+
+            nodes.insert(hash, element);
+
+            intermediate_nodes.push_back(hash);
         }
 
         let root_hash = intermediate_nodes.pop_back().unwrap_or_default();
@@ -189,5 +221,71 @@ impl MerkleTree {
         Ok(Proof {
             nodes: nodes.into_iter().collect(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{TypeDef, TypeDefArray, TypeRef};
+
+    #[test]
+    fn merkle_tree_works() {
+        for num_leaves in [5, 8, 10, 20, 23, 34, 37, 40] {
+            println!("Running with {num_leaves}");
+
+            let types = (0..num_leaves).map(|n| {
+                (
+                    TypeId::Other(n),
+                    Type {
+                        path: Vec::new(),
+                        type_id: n.into(),
+                        type_def: TypeDef::Array(TypeDefArray {
+                            len: 1,
+                            type_param: TypeRef::U8,
+                        }),
+                    },
+                )
+            });
+
+            let merkle_tree = MerkleTree::new(types.clone());
+
+            let mut levels = BTreeMap::from_iter([(0, vec![merkle_tree.root_hash])]);
+
+            fn collect_levels(
+                levels: &mut BTreeMap<u32, Vec<Hash>>,
+                level: u32,
+                merkle_tree: &MerkleTree,
+                node_hash: Hash,
+            ) {
+                match merkle_tree.nodes.get(&node_hash).unwrap() {
+                    MerkleTreeNode::Leaf { .. } => {}
+                    MerkleTreeNode::Node { left, right } => {
+                        levels.entry(level).or_default().push(*left);
+                        levels.entry(level).or_default().push(*right);
+
+                        collect_levels(levels, level + 1, merkle_tree, *left);
+                        collect_levels(levels, level + 1, merkle_tree, *right);
+                    }
+                }
+            }
+
+            collect_levels(&mut levels, 1, &merkle_tree, merkle_tree.root_hash);
+            assert!(!levels.is_empty());
+            // Check that the numbers of levels is correct.
+            assert_eq!(
+                (merkle_tree.nodes.len() as f32).log2().ceil() as usize,
+                levels.len()
+            );
+
+            // Ensure it is a complete binary tree
+            while let Some((level, nodes)) = levels.pop_first() {
+                if levels.is_empty() {
+                    assert!(2u32.pow(level) >= nodes.len() as u32);
+                } else {
+                    assert_eq!(2u32.pow(level), nodes.len() as u32);
+                }
+            }
+        }
     }
 }
