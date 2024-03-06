@@ -84,7 +84,7 @@ impl MerkleTree {
         let mut hash_to_type_ids = BTreeMap::<Hash, BTreeSet<TypeId>>::default();
         let mut nodes = BTreeMap::default();
 
-        let mut leaves = leaves
+        let mut intermediate_nodes = leaves
             .into_iter()
             .enumerate()
             .map(|(leaf_index, (type_id, ty))| {
@@ -102,44 +102,12 @@ impl MerkleTree {
             })
             .collect::<VecDeque<_>>();
 
-        let mut intermediate_nodes = VecDeque::new();
-
-        while leaves.len() > 1 {
-            let right = leaves
-                .pop_back()
-                .expect("We have more than one element; qed");
-            let left = leaves
-                .pop_back()
-                .expect("We have more than one element; qed");
-
-            let element = MerkleTreeNode::Node { left, right };
-            let hash = element.hash();
-
-            hash_to_type_ids.insert(
-                hash,
-                hash_to_type_ids
-                    .get(&left)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .chain(hash_to_type_ids.get(&right).cloned().unwrap_or_default())
-                    .collect(),
-            );
-
-            nodes.insert(hash, element);
-            intermediate_nodes.push_back(hash);
-        }
-
-        if let Some(leaf) = leaves.pop_back() {
-            intermediate_nodes.push_front(leaf);
-        }
-
         while intermediate_nodes.len() > 1 {
             let right = intermediate_nodes
-                .pop_front()
+                .pop_back()
                 .expect("We have more than one element; qed");
             let left = intermediate_nodes
-                .pop_front()
+                .pop_back()
                 .expect("We have more than one element; qed");
 
             let element = MerkleTreeNode::Node { left, right };
@@ -158,7 +126,7 @@ impl MerkleTree {
 
             nodes.insert(hash, element);
 
-            intermediate_nodes.push_back(hash);
+            intermediate_nodes.push_front(hash);
         }
 
         let root_hash = intermediate_nodes.pop_back().unwrap_or_default();
