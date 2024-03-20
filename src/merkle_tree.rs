@@ -1,4 +1,4 @@
-use crate::types::{Hash, Type};
+use crate::types::{Hash, Type, TypeDef};
 use alloc::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     format,
@@ -67,6 +67,47 @@ impl Ord for TypeId {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct NodeIndex(usize);
+
+impl NodeIndex {
+    fn parent(self) -> Self {
+        if self.0 == 0 {
+            Self(0)
+        } else {
+            Self((self.0 - 1) / 2)
+        }
+    }
+
+    fn is_left(self) -> bool {
+        self.0 % 2 == 1
+    }
+
+    fn level(self) -> usize {
+        (self.0 + 1).ilog2() as _
+    }
+
+    /// Returns `true` if `other` is a descendent.
+    fn is_descendent(self, other: Self) -> bool {
+        // If the index is `0`, it is the root
+        if self.0 == 0 {
+            return true;
+        }
+
+        // If the index is greater, it can not be a descendent
+        if self.0 > other.0 {
+            return false;
+        }
+
+        let level0 = self.level();
+        let level1 = other.level();
+
+        // Check if applying X times the parent function leads to
+        // the expected `index`. X is the level difference
+        self.0 == (other.0 - 1) >> (level1 - level0)
+    }
+}
+
 /// A proof containing all the nodes to decode a specific extrinsic.
 pub struct Proof {
     /// All the nodes required to decode the extrinsic.
@@ -77,12 +118,16 @@ pub struct MerkleTree {
     root_hash: Hash,
     nodes: BTreeMap<Hash, MerkleTreeNode>,
     hash_to_type_ids: BTreeMap<Hash, BTreeSet<TypeId>>,
+    type_id_to_leaf_index: BTreeMap<TypeId, usize>,
+    node_index_to_hash: BTreeMap<usize, Hash>,
 }
 
 impl MerkleTree {
     pub fn new(leaves: impl IntoIterator<Item = (TypeId, Type)>) -> Self {
         let mut hash_to_type_ids = BTreeMap::<Hash, BTreeSet<TypeId>>::default();
         let mut nodes = BTreeMap::default();
+
+        let mut type_id_to_leaf_index = BTreeMap::<TypeId, usize>::default();
 
         let mut intermediate_nodes = leaves
             .into_iter()
@@ -95,6 +140,7 @@ impl MerkleTree {
 
                 let hash = element.hash();
                 hash_to_type_ids.entry(hash).or_default().insert(type_id);
+                type_id_to_leaf_index.insert(type_id, leaf_index);
 
                 nodes.insert(hash, element);
 
@@ -102,13 +148,17 @@ impl MerkleTree {
             })
             .collect::<VecDeque<_>>();
 
+        let mut hashes = VecDeque::<Hash>::default();
+
         while intermediate_nodes.len() > 1 {
             let right = intermediate_nodes
                 .pop_back()
                 .expect("We have more than one element; qed");
+            hashes.push_front(right);
             let left = intermediate_nodes
                 .pop_back()
                 .expect("We have more than one element; qed");
+            hashes.push_front(left);
 
             let element = MerkleTreeNode::Node { left, right };
             let hash = element.hash();
@@ -130,11 +180,14 @@ impl MerkleTree {
         }
 
         let root_hash = intermediate_nodes.pop_back().unwrap_or_default();
+        hashes.push_front(root_hash);
 
         Self {
             root_hash,
             nodes,
             hash_to_type_ids,
+            type_id_to_leaf_index,
+            node_index_to_hash: hashes.into_iter().enumerate().collect(),
         }
     }
 
@@ -143,47 +196,33 @@ impl MerkleTree {
     }
 
     pub fn build_proof(&self, type_ids: impl IntoIterator<Item = TypeId>) -> Result<Proof, String> {
-        let mut nodes = BTreeSet::new();
+        let mut leaf_node_indices = Vec::new();
 
         for type_id in type_ids.into_iter() {
-            let mut process_node = self.root_hash;
-            loop {
-                let node = self.nodes.get(&process_node).ok_or_else(|| {
-                    format!(
-                        "Could not find node for hash: {}",
-                        array_bytes::bytes2hex("0x", &process_node)
-                    )
-                })?;
+            let leaf_index = self
+                .type_id_to_leaf_index
+                .get(&type_id)
+                .ok_or_else(|| format!("Could not find leaf index for type id `{type_id:?}`"))?;
+            // The leaves have the highest node indices. Thus, we just need to
+            // subtract from the last node index the reverse index of the leaf.
+            let node_index =
+                self.nodes.len() - 1 - (self.type_id_to_leaf_index.len() - 1 - leaf_index);
 
-                nodes.insert(node.clone());
+            leaf_node_indices.push(NodeIndex(node_index));
+        }
 
-                match node {
-                    MerkleTreeNode::Node { left, right } => {
-                        if self
-                            .hash_to_type_ids
-                            .get(left)
-                            .map_or(false, |tids| tids.contains(&type_id))
-                        {
-                            process_node = *left;
-                            continue;
-                        } else if self
-                            .hash_to_type_ids
-                            .get(right)
-                            .map_or(false, |tids| tids.contains(&type_id))
-                        {
-                            process_node = *right;
-                            continue;
-                        } else {
-                            return Err(format!(
-                                "Could not find type_id `{type_id:?}` from node `{}`.",
-                                array_bytes::bytes2hex("0x", process_node)
-                            ));
-                        }
-                    }
-                    // We captured the leaf we are interested in.
-                    MerkleTreeNode::Leaf { .. } => break,
-                }
-            }
+        // Sort the leave node indices to get the left most leaf first.
+        leaf_node_indices.sort_by(|l, r| {
+            r.level().cmp(&l.level()).then_with(|| l.0.cmp(&r.0))
+        });
+
+        let mut node_hashes = Vec::new();
+
+        let mut iter = leaf_node_indices.iter().peekable();
+
+        while let Some(leaf_node_index) = iter.next() {
+            let parent = leaf_node_index.parent();
+
         }
 
         Ok(Proof {
