@@ -24,15 +24,12 @@ struct TypeResolver {
 }
 
 impl TypeResolver {
-    fn new(type_information: &TypeInformation) -> Self {
+    fn new<'a>(types: impl Iterator<Item = &'a Type>) -> Self {
         Self {
-            raw_type_id_to_types: type_information.types.iter().fold(
-                Default::default(),
-                |mut map, (id, ty)| {
-                    map.entry(id.type_id()).or_default().push(ty.clone());
-                    map
-                },
-            ),
+            raw_type_id_to_types: types.fold(Default::default(), |mut map, ty| {
+                map.entry(ty.type_id.0).or_default().push(ty.clone());
+                map
+            }),
         }
     }
 }
@@ -377,12 +374,13 @@ impl Visitor for CollectAccessedTypes {
     }
 }
 
-pub fn decode_extrinsic_and_collect_type_ids(
+pub fn decode_extrinsic_and_collect_type_ids<'a>(
     mut extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
     type_information: &TypeInformation,
+    types: impl Iterator<Item = &'a Type>,
 ) -> Result<Vec<TypeId>, String> {
-    let type_resolver = TypeResolver::new(type_information);
+    let type_resolver = TypeResolver::new(types);
 
     let _length = Compact::<u32>::decode(&mut extrinsic)
         .map_err(|e| format!("Failed to read length: {e}"))?;

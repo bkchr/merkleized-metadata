@@ -2,12 +2,12 @@
 
 extern crate alloc;
 
+use alloc::string::String;
 use extrinsic_decoder::decode_extrinsic_and_collect_type_ids;
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
 use merkle_tree::{MerkleTree, Proof};
 use types::MetadataDigest;
-use alloc::string::String;
 
 mod extrinsic_decoder;
 mod from_frame_metadata;
@@ -55,11 +55,13 @@ pub fn generate_proof_for_extrinsic(
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
+    let type_information = prepared.as_type_information();
 
     let accessed_types = decode_extrinsic_and_collect_type_ids(
         extrinsic,
         additional_signed,
-        &prepared.as_type_information(),
+        &type_information,
+        type_information.types.values(),
     )?;
 
     MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
@@ -67,6 +69,8 @@ pub fn generate_proof_for_extrinsic(
 
 #[cfg(test)]
 mod tests {
+    use self::merkle_tree::MerkleTreeNode;
+
     use super::*;
     use ::frame_metadata::RuntimeMetadataPrefixed;
     use codec::Decode;
@@ -180,11 +184,36 @@ mod tests {
             .unwrap()
             .1;
 
-        let _proof = generate_proof_for_extrinsic(
+        let proof = generate_proof_for_extrinsic(
             &array_bytes::hex2bytes(ext).unwrap(),
             Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
             &metadata,
         )
         .unwrap();
+
+        let types = proof
+            .nodes
+            .into_iter()
+            .flat_map(|n| match n {
+                MerkleTreeNode::Leaf { ty, .. } => Some(ty),
+                MerkleTreeNode::Node { .. } => None,
+            })
+            .collect::<Vec<_>>();
+
+        let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+        let type_information = prepared.as_type_information();
+
+        // Check that we have included all the required types in the proof.
+        let accessed_types = decode_extrinsic_and_collect_type_ids(
+            &array_bytes::hex2bytes(ext).unwrap(),
+            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &type_information,
+            types.iter(),
+        )
+        .unwrap();
+
+        MerkleTree::new(prepared.as_type_information().types)
+            .build_proof(accessed_types)
+            .unwrap();
     }
 }
