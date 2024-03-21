@@ -69,8 +69,6 @@ pub fn generate_proof_for_extrinsic(
 
 #[cfg(test)]
 mod tests {
-    use self::merkle_tree::MerkleTreeNode;
-
     use super::*;
     use ::frame_metadata::RuntimeMetadataPrefixed;
     use codec::Decode;
@@ -191,15 +189,6 @@ mod tests {
         )
         .unwrap();
 
-        let types = proof
-            .nodes
-            .into_iter()
-            .flat_map(|n| match n {
-                MerkleTreeNode::Leaf { ty, .. } => Some(ty),
-                MerkleTreeNode::Node { .. } => None,
-            })
-            .collect::<Vec<_>>();
-
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
         let type_information = prepared.as_type_information();
 
@@ -208,7 +197,7 @@ mod tests {
             &array_bytes::hex2bytes(ext).unwrap(),
             Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
             &type_information,
-            types.iter(),
+            proof.leaves.iter(),
         )
         .unwrap();
 

@@ -126,21 +126,20 @@ impl NodeIndex {
 
 /// A proof containing all the nodes to decode a specific extrinsic.
 pub struct Proof {
-    /// All the nodes required to decode the extrinsic.
-    pub nodes: Vec<MerkleTreeNode>,
+    pub leaves: Vec<Type>,
+    pub leaf_indices: Vec<u32>,
+    pub nodes: Vec<Hash>,
 }
 
 pub struct MerkleTree {
     root_hash: Hash,
     nodes: BTreeMap<Hash, MerkleTreeNode>,
-    hash_to_type_ids: BTreeMap<Hash, BTreeSet<TypeId>>,
     type_id_to_leaf_index: BTreeMap<TypeId, usize>,
     node_index_to_hash: BTreeMap<NodeIndex, Hash>,
 }
 
 impl MerkleTree {
     pub fn new(leaves: impl IntoIterator<Item = (TypeId, Type)>) -> Self {
-        let mut hash_to_type_ids = BTreeMap::<Hash, BTreeSet<TypeId>>::default();
         let mut nodes = BTreeMap::default();
 
         let mut type_id_to_leaf_index = BTreeMap::<TypeId, usize>::default();
@@ -155,7 +154,6 @@ impl MerkleTree {
                 };
 
                 let hash = element.hash();
-                hash_to_type_ids.entry(hash).or_default().insert(type_id);
                 type_id_to_leaf_index.insert(type_id, leaf_index);
 
                 nodes.insert(hash, element);
@@ -179,17 +177,6 @@ impl MerkleTree {
             let element = MerkleTreeNode::Node { left, right };
             let hash = element.hash();
 
-            hash_to_type_ids.insert(
-                hash,
-                hash_to_type_ids
-                    .get(&left)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .chain(hash_to_type_ids.get(&right).cloned().unwrap_or_default())
-                    .collect(),
-            );
-
             nodes.insert(hash, element);
 
             intermediate_nodes.push_front(hash);
@@ -201,7 +188,6 @@ impl MerkleTree {
         Self {
             root_hash,
             nodes,
-            hash_to_type_ids,
             type_id_to_leaf_index,
             node_index_to_hash: hashes
                 .into_iter()
@@ -237,10 +223,11 @@ impl MerkleTree {
         let mut node_hashes = Vec::new();
 
         let mut iter = leaf_node_indices.iter().peekable();
-        let mut previous = None;
+        let mut previous: Option<NodeIndex> = None;
 
         while let Some(leaf_node_index) = iter.next() {
             let mut node_index = *leaf_node_index;
+            let node_hashes_pos = node_hashes.len();
 
             while !node_index.is_root() {
                 let parent = node_index.parent();
@@ -256,7 +243,7 @@ impl MerkleTree {
                     let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
                         format!("Could not find hash for right child `{right_child:?}`.")
                     })?;
-                    node_hashes.push(hash);
+                    node_hashes.push(*hash);
                 } else {
                     // If the previous is a sibling of the current node index, it means we already have processed it.
                     if previous.map_or(false, |p| p.is_sibling_of(node_index)) {
@@ -268,7 +255,7 @@ impl MerkleTree {
                     let hash = self.node_index_to_hash.get(&left_child).ok_or_else(|| {
                         format!("Could not find hash for left child `{left_child:?}`.")
                     })?;
-                    node_hashes.push(hash);
+                    node_hashes.insert(node_hashes_pos, *hash);
                 }
 
                 previous = Some(node_index);
@@ -276,8 +263,34 @@ impl MerkleTree {
             }
         }
 
+        let leaves = leaf_node_indices
+            .iter()
+            .map(|node_index| {
+                let hash = self
+                    .node_index_to_hash
+                    .get(node_index)
+                    .ok_or_else(|| format!("Could not find hash for {node_index:?}"))?;
+                let node = self.nodes.get(hash).ok_or_else(|| {
+                    format!(
+                        "Could not find node for hash `{}`",
+                        array_bytes::bytes2hex("0x", hash)
+                    )
+                })?;
+
+                match node {
+                    MerkleTreeNode::Leaf { ty, .. } => Ok(ty.clone()),
+                    MerkleTreeNode::Node { .. } => Err(format!(
+                        "Expected leaf, found node for hash `{}`",
+                        array_bytes::bytes2hex("0x", hash)
+                    )),
+                }
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+
         Ok(Proof {
-            nodes: nodes.into_iter().collect(),
+            leaves,
+            leaf_indices: leaf_node_indices.into_iter().map(|i| i.0 as _).collect(),
+            nodes: node_hashes,
         })
     }
 }
