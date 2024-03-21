@@ -67,10 +67,14 @@ impl Ord for TypeId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct NodeIndex(usize);
 
 impl NodeIndex {
+    fn is_root(self) -> bool {
+        self.0 == 0
+    }
+
     fn parent(self) -> Self {
         if self.0 == 0 {
             Self(0)
@@ -79,12 +83,24 @@ impl NodeIndex {
         }
     }
 
-    fn is_left(self) -> bool {
+    fn is_left_child(self) -> bool {
         self.0 % 2 == 1
     }
 
     fn level(self) -> usize {
         (self.0 + 1).ilog2() as _
+    }
+
+    fn is_sibling_of(self, other: Self) -> bool {
+        self.parent() == other.parent()
+    }
+
+    fn right_child(self) -> Self {
+        Self(self.0 * 2 + 2)
+    }
+
+    fn left_child(self) -> Self {
+        Self(self.0 * 2 + 1)
     }
 
     /// Returns `true` if `other` is a descendent.
@@ -119,7 +135,7 @@ pub struct MerkleTree {
     nodes: BTreeMap<Hash, MerkleTreeNode>,
     hash_to_type_ids: BTreeMap<Hash, BTreeSet<TypeId>>,
     type_id_to_leaf_index: BTreeMap<TypeId, usize>,
-    node_index_to_hash: BTreeMap<usize, Hash>,
+    node_index_to_hash: BTreeMap<NodeIndex, Hash>,
 }
 
 impl MerkleTree {
@@ -187,7 +203,11 @@ impl MerkleTree {
             nodes,
             hash_to_type_ids,
             type_id_to_leaf_index,
-            node_index_to_hash: hashes.into_iter().enumerate().collect(),
+            node_index_to_hash: hashes
+                .into_iter()
+                .enumerate()
+                .map(|(i, h)| (NodeIndex(i), h))
+                .collect(),
         }
     }
 
@@ -212,17 +232,48 @@ impl MerkleTree {
         }
 
         // Sort the leave node indices to get the left most leaf first.
-        leaf_node_indices.sort_by(|l, r| {
-            r.level().cmp(&l.level()).then_with(|| l.0.cmp(&r.0))
-        });
+        leaf_node_indices.sort_by(|l, r| r.level().cmp(&l.level()).then_with(|| l.0.cmp(&r.0)));
 
         let mut node_hashes = Vec::new();
 
         let mut iter = leaf_node_indices.iter().peekable();
+        let mut previous = None;
 
         while let Some(leaf_node_index) = iter.next() {
-            let parent = leaf_node_index.parent();
+            let mut node_index = *leaf_node_index;
 
+            while !node_index.is_root() {
+                let parent = node_index.parent();
+
+                if node_index.is_left_child() {
+                    let right_child = parent.right_child();
+                    if let Some(next_leaf) = iter.peek() {
+                        if **next_leaf == right_child || right_child.is_descendent(**next_leaf) {
+                            break;
+                        }
+                    }
+
+                    let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
+                        format!("Could not find hash for right child `{right_child:?}`.")
+                    })?;
+                    node_hashes.push(hash);
+                } else {
+                    // If the previous is a sibling of the current node index, it means we already have processed it.
+                    if previous.map_or(false, |p| p.is_sibling_of(node_index)) {
+                        break;
+                    }
+
+                    // As the leaves are sorted from left to right, the left child wasn't added yet.
+                    let left_child = parent.left_child();
+                    let hash = self.node_index_to_hash.get(&left_child).ok_or_else(|| {
+                        format!("Could not find hash for left child `{left_child:?}`.")
+                    })?;
+                    node_hashes.push(hash);
+                }
+
+                previous = Some(node_index);
+                node_index = parent;
+            }
         }
 
         Ok(Proof {
