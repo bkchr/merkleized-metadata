@@ -6,7 +6,7 @@ use alloc::{
     vec::Vec,
 };
 use codec::{Compact, Encode};
-use core::cmp::Ordering;
+use core::{cmp::Ordering, fmt::Debug};
 
 /// A node of a [`MerkleTree`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -125,6 +125,7 @@ impl NodeIndex {
 }
 
 /// A proof containing all the nodes to decode a specific extrinsic.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proof {
     pub leaves: Vec<Type>,
     pub leaf_indices: Vec<u32>,
@@ -136,6 +137,18 @@ pub struct MerkleTree {
     nodes: BTreeMap<Hash, MerkleTreeNode>,
     type_id_to_leaf_index: BTreeMap<TypeId, usize>,
     node_index_to_hash: BTreeMap<NodeIndex, Hash>,
+}
+
+impl Debug for MerkleTree {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "MerkleTree")?;
+
+        for i in 0..self.node_index_to_hash.len() {
+
+        }
+
+        Ok(())
+    }
 }
 
 impl MerkleTree {
@@ -297,8 +310,18 @@ impl MerkleTree {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use codec::Decode;
+    use frame_metadata::RuntimeMetadataPrefixed;
+
     use super::*;
-    use crate::types::{TypeDef, TypeDefArray, TypeRef};
+    use crate::{
+        extrinsic_decoder::decode_extrinsic_and_collect_type_ids,
+        from_frame_metadata::FrameMetadataPrepared,
+        generate_proof_for_extrinsic,
+        types::{TypeDef, TypeDefArray, TypeRef},
+    };
 
     #[test]
     fn merkle_tree_works() {
@@ -358,5 +381,94 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn get_hash(
+        leaf_indices: &mut &[u32],
+        leaves: &mut &[Type],
+        nodes: &mut &[Hash],
+        node_index: NodeIndex,
+    ) -> Hash {
+        let current_leaf = NodeIndex(leaf_indices[0] as usize);
+
+        if node_index == current_leaf {
+            let hash = blake3::hash(&leaves[0].encode());
+
+            *leaves = &leaves[1..];
+            *leaf_indices = &leaf_indices[1..];
+            return hash.into();
+        }
+
+        if !node_index.is_descendent(current_leaf) {
+            let res = nodes[0];
+            *nodes = &nodes[1..];
+            return res;
+        }
+
+        let left_child = node_index.left_child();
+        let left = get_hash(leaf_indices, leaves, nodes, left_child);
+
+        let right_child = node_index.right_child();
+        let right = get_hash(leaf_indices, leaves, nodes, right_child);
+
+        blake3::hash(&(left, right).encode()).into()
+    }
+
+    #[test]
+    fn generate_proof() {
+        // `Balances::transfer_keep_alive`
+        let ext = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
+        let additional_signed = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+        let metadata = String::from_utf8(
+            fs::read(format!(
+                "{}/fixtures/rococo_metadata_v15",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let metadata = Option::<Vec<u8>>::decode(
+            &mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+        )
+        .unwrap()
+        .unwrap();
+
+        let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..])
+            .unwrap()
+            .1;
+
+        let proof = generate_proof_for_extrinsic(
+            &array_bytes::hex2bytes(ext).unwrap(),
+            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &metadata,
+        )
+        .unwrap();
+
+        let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+        let type_information = prepared.as_type_information();
+
+        // Check that we have included all the required types in the proof.
+        let accessed_types = decode_extrinsic_and_collect_type_ids(
+            &array_bytes::hex2bytes(ext).unwrap(),
+            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &type_information,
+            proof.leaves.iter(),
+        )
+        .unwrap();
+
+        let merkle_tree = MerkleTree::new(prepared.as_type_information().types);
+        let proof2 = merkle_tree.build_proof(accessed_types).unwrap();
+
+        assert_eq!(proof, proof2);
+
+        let root_hash = get_hash(
+            &mut &proof.leaf_indices[..],
+            &mut &proof.leaves[..],
+            &mut &proof.nodes[..],
+            NodeIndex(0),
+        );
+        assert_eq!(merkle_tree.root(), root_hash);
     }
 }
