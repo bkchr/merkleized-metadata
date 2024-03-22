@@ -115,15 +115,12 @@ impl NodeIndex {
             return false;
         }
 
-        self.0 += 1;
-        other.0 += 1;
-
         let level0 = self.level();
         let level1 = other.level();
 
         // Check if applying X times the parent function leads to
         // the expected `index`. X is the level difference
-        self.0 == dbg!(other.0) >> dbg!(level1 - level0)
+        self.0 + 1 == (other.0 + 1) >> (level1 - level0)
     }
 }
 
@@ -268,44 +265,14 @@ impl MerkleTree {
         let mut node_hashes = Vec::new();
 
         let mut iter = leaf_node_indices.iter().peekable();
-        let mut previous: Option<NodeIndex> = None;
 
-        while let Some(leaf_node_index) = iter.next() {
-            let mut node_index = *leaf_node_index;
-            let node_hashes_pos = node_hashes.len();
-
-            while !node_index.is_root() {
-                let parent = node_index.parent();
-
-                if node_index.is_left_child() {
-                    let right_child = parent.right_child();
-                    if let Some(next_leaf) = iter.peek() {
-                        if **next_leaf == right_child || right_child.is_descendent(**next_leaf) {
-                            break;
-                        }
-                    }
-
-                    let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
-                        format!("Could not find hash for right child `{right_child:?}`.")
-                    })?;
-                    node_hashes.push(*hash);
-                } else {
-                    // If the previous is a sibling of the current node index, it means we already have processed it.
-                    if previous.map_or(false, |p| p.is_sibling_of(node_index)) {
-                        break;
-                    }
-
-                    // As the leaves are sorted from left to right, the left child wasn't added yet.
-                    let left_child = parent.left_child();
-                    let hash = self.node_index_to_hash.get(&left_child).ok_or_else(|| {
-                        format!("Could not find hash for left child `{left_child:?}`.")
-                    })?;
-                    node_hashes.insert(node_hashes_pos, *hash);
-                }
-
-                previous = Some(node_index);
-                node_index = parent;
-            }
+        if let Some(leaf_node_index) = iter.next() {
+            self.collect_node_hashes(
+                *leaf_node_index,
+                *leaf_node_index,
+                &mut iter,
+                &mut node_hashes,
+            )?;
         }
 
         let leaves = leaf_node_indices
@@ -313,7 +280,7 @@ impl MerkleTree {
             .map(|node_index| {
                 let hash = self
                     .node_index_to_hash
-                    .get(node_index)
+                    .get(dbg!(node_index))
                     .ok_or_else(|| format!("Could not find hash for {node_index:?}"))?;
                 let node = self.nodes.get(hash).ok_or_else(|| {
                     format!(
@@ -337,6 +304,58 @@ impl MerkleTree {
             leaf_indices: leaf_node_indices.into_iter().map(|i| i.0 as _).collect(),
             nodes: node_hashes,
         })
+    }
+
+    fn collect_node_hashes<'a>(
+        &self,
+        first_node_index: NodeIndex,
+        leaf_node_index: NodeIndex,
+        leaves: &mut impl Iterator<Item = &'a NodeIndex>,
+        node_hashes: &mut Vec<Hash>,
+    ) -> Result<(), String> {
+        let mut node_index = leaf_node_index;
+        let node_hashes_pos = node_hashes.len();
+        let mut next_leaf_opt = leaves.next();
+
+        while !node_index.is_root() {
+            let parent = dbg!(node_index.parent());
+
+            if parent == first_node_index {
+                return Ok(());
+            }
+
+            if node_index.is_left_child() {
+                let right_child = parent.right_child();
+                if let Some(next_leaf) = next_leaf_opt {
+                    if *next_leaf == right_child {
+                        next_leaf_opt = leaves.next();
+                        node_index = parent;
+                        continue;
+                    } else if right_child.is_descendent(*next_leaf) {
+                        self.collect_node_hashes(parent, *next_leaf, leaves, node_hashes)?;
+                        node_index = parent;
+                        continue;
+                    }
+                }
+
+                let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
+                    format!("Could not find hash for right child `{right_child:?}`.")
+                })?;
+                node_hashes.push(*hash);
+            } else {
+                // As the leaves are sorted from left to right, the left child wasn't added yet.
+                let left_child = parent.left_child();
+                let hash = self.node_index_to_hash.get(&left_child).ok_or_else(|| {
+                    format!("Could not find hash for left child `{left_child:?}`.")
+                })?;
+
+                node_hashes.insert(node_hashes_pos, *hash);
+            }
+
+            node_index = parent;
+        }
+
+        Ok(())
     }
 }
 
@@ -420,30 +439,50 @@ mod tests {
         leaves: &mut &[Type],
         nodes: &mut &[Hash],
         node_index: NodeIndex,
+        merkle_tree: &MerkleTree,
     ) -> Hash {
-        let current_leaf = NodeIndex(leaf_indices[0] as usize);
+        let is_descendent = if leaf_indices.is_empty() {
+            false
+        } else {
+            let current_leaf = NodeIndex(leaf_indices[0] as usize);
 
-        if dbg!(node_index) == dbg!(current_leaf) {
-            let hash = blake3::hash(&leaves[0].encode());
+            if node_index == dbg!(current_leaf) {
+                let hash = blake3::hash(&leaves[0].encode());
 
-            *leaves = &leaves[1..];
-            *leaf_indices = &leaf_indices[1..];
-            return hash.into();
-        }
+                *leaves = &leaves[1..];
+                *leaf_indices = &leaf_indices[1..];
+                return hash.into();
+            }
 
-        if dbg!(!node_index.is_descendent(current_leaf)) {
+            node_index.is_descendent(current_leaf)
+        };
+
+        if dbg!(!is_descendent) {
             let res = nodes[0];
             *nodes = &nodes[1..];
             return res;
         }
 
         let left_child = dbg!(node_index.left_child());
-        let left = get_hash(leaf_indices, leaves, nodes, left_child);
+        let left = get_hash(leaf_indices, leaves, nodes, left_child, merkle_tree);
+
+        assert_eq!(
+            left,
+            *merkle_tree.node_index_to_hash.get(&left_child).unwrap(),
+            "Found wrong {left_child:?}"
+        );
+
         dbg!(array_bytes::bytes2hex("left: 0x", &left));
 
-        let right_child = node_index.right_child();
-        let right = get_hash(leaf_indices, leaves, nodes, right_child);
+        let right_child = dbg!(node_index.right_child());
+        let right = get_hash(leaf_indices, leaves, nodes, right_child, merkle_tree);
         dbg!(array_bytes::bytes2hex("right: 0x", &right));
+
+        assert_eq!(
+            right,
+            *merkle_tree.node_index_to_hash.get(&right_child).unwrap(),
+            "Found wrong {right_child:?}"
+        );
 
         blake3::hash(&(left, right).encode()).into()
     }
@@ -508,10 +547,19 @@ mod tests {
             &mut &proof.leaves[..],
             &mut &proof.nodes[..],
             NodeIndex(0),
+            &merkle_tree,
         );
         assert_eq!(
             array_bytes::bytes2hex("0x", dbg!(merkle_tree).root()),
             array_bytes::bytes2hex("0x", root_hash)
         );
+    }
+
+    #[test]
+    fn lol() {
+        let some = NodeIndex(2);
+        let some2 = NodeIndex(3139);
+
+        assert!(some.is_descendent(some2));
     }
 }
