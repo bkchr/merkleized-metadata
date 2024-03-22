@@ -104,7 +104,7 @@ impl NodeIndex {
     }
 
     /// Returns `true` if `other` is a descendent.
-    fn is_descendent(self, other: Self) -> bool {
+    fn is_descendent(mut self, mut other: Self) -> bool {
         // If the index is `0`, it is the root
         if self.0 == 0 {
             return true;
@@ -115,12 +115,15 @@ impl NodeIndex {
             return false;
         }
 
+        self.0 += 1;
+        other.0 += 1;
+
         let level0 = self.level();
         let level1 = other.level();
 
         // Check if applying X times the parent function leads to
         // the expected `index`. X is the level difference
-        self.0 == (other.0 - 1) >> (level1 - level0)
+        self.0 == dbg!(other.0) >> dbg!(level1 - level0)
     }
 }
 
@@ -143,8 +146,37 @@ impl Debug for MerkleTree {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "MerkleTree")?;
 
-        for i in 0..self.node_index_to_hash.len() {
+        let mut level = 0;
+        write!(
+            f,
+            "0: {}",
+            array_bytes::bytes2hex(
+                "0x",
+                self.node_index_to_hash
+                    .get(&NodeIndex(0))
+                    .copied()
+                    .unwrap_or(Hash::default())
+            )
+        )?;
+        for i in 1..self.node_index_to_hash.len() {
+            let node = NodeIndex(i);
 
+            if node.level() != level {
+                level = node.level();
+                write!(f, "\n{level}: ")?;
+            }
+
+            write!(
+                f,
+                "{} ",
+                array_bytes::bytes2hex(
+                    "0x",
+                    self.node_index_to_hash
+                        .get(&node)
+                        .copied()
+                        .unwrap_or(Hash::default())
+                )
+            )?;
         }
 
         Ok(())
@@ -391,7 +423,7 @@ mod tests {
     ) -> Hash {
         let current_leaf = NodeIndex(leaf_indices[0] as usize);
 
-        if node_index == current_leaf {
+        if dbg!(node_index) == dbg!(current_leaf) {
             let hash = blake3::hash(&leaves[0].encode());
 
             *leaves = &leaves[1..];
@@ -399,17 +431,19 @@ mod tests {
             return hash.into();
         }
 
-        if !node_index.is_descendent(current_leaf) {
+        if dbg!(!node_index.is_descendent(current_leaf)) {
             let res = nodes[0];
             *nodes = &nodes[1..];
             return res;
         }
 
-        let left_child = node_index.left_child();
+        let left_child = dbg!(node_index.left_child());
         let left = get_hash(leaf_indices, leaves, nodes, left_child);
+        dbg!(array_bytes::bytes2hex("left: 0x", &left));
 
         let right_child = node_index.right_child();
         let right = get_hash(leaf_indices, leaves, nodes, right_child);
+        dbg!(array_bytes::bytes2hex("right: 0x", &right));
 
         blake3::hash(&(left, right).encode()).into()
     }
@@ -463,12 +497,21 @@ mod tests {
 
         assert_eq!(proof, proof2);
 
+        let mut node = NodeIndex(proof.leaf_indices[0] as _);
+        while !node.is_root() {
+            dbg!(node);
+            node = node.parent();
+        }
+
         let root_hash = get_hash(
             &mut &proof.leaf_indices[..],
             &mut &proof.leaves[..],
             &mut &proof.nodes[..],
             NodeIndex(0),
         );
-        assert_eq!(merkle_tree.root(), root_hash);
+        assert_eq!(
+            array_bytes::bytes2hex("0x", dbg!(merkle_tree).root()),
+            array_bytes::bytes2hex("0x", root_hash)
+        );
     }
 }
