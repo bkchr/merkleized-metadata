@@ -142,6 +142,9 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
+    /// Create the merkle tree using the given `leaves`.
+    ///
+    /// The `leaves` are inserted in order.
     pub fn new(leaves: impl IntoIterator<Item = (TypeId, Type)>) -> Self {
         let mut nodes = BTreeMap::default();
 
@@ -200,10 +203,12 @@ impl MerkleTree {
         }
     }
 
+    /// Returns the root hash.
     pub fn root(&self) -> Hash {
         self.root_hash
     }
 
+    /// Build a proof that includes the given `type_ids`.
     pub fn build_proof(&self, type_ids: impl IntoIterator<Item = TypeId>) -> Result<Proof, String> {
         let mut leaf_node_indices = Vec::new();
 
@@ -278,10 +283,15 @@ impl MerkleTree {
 
             if node_index.is_left_child() {
                 let right_child = parent.right_child();
+
+                // If the right child is the next leaf, we can skip it.
                 if leaves.peek().map_or(false, |l| **l == right_child) {
                     // Skip the leaf
                     leaves.next();
-                } else if let Some(next_leaf) =
+                }
+                // If the next leaf is a descendant of the right child, we need
+                // to go down to collect the required data.
+                else if let Some(next_leaf) =
                     leaves.peek().filter(|l| right_child.is_descendent(***l))
                 {
                     let next_leaf = **next_leaf;
