@@ -1,6 +1,6 @@
-use crate::types::{Hash, Type, TypeDef};
+use crate::types::{Hash, Type};
 use alloc::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     format,
     string::String,
     vec::Vec,
@@ -440,12 +440,12 @@ mod tests {
         blake3::hash(&(left, right).encode()).into()
     }
 
+    // `Balances::transfer_keep_alive`
+    const TEST_EXT: &str = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
+    const TEST_ADDITIONAL_SIGNED: &str = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
     #[test]
     fn generate_proof() {
-        // `Balances::transfer_keep_alive`
-        let ext = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
-        let additional_signed = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-
         let metadata = String::from_utf8(
             fs::read(format!(
                 "{}/fixtures/rococo_metadata_v15",
@@ -466,8 +466,8 @@ mod tests {
             .1;
 
         let proof = generate_proof_for_extrinsic(
-            &array_bytes::hex2bytes(ext).unwrap(),
-            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
             &metadata,
         )
         .unwrap();
@@ -477,8 +477,8 @@ mod tests {
 
         // Check that we have included all the required types in the proof.
         let accessed_types = decode_extrinsic_and_collect_type_ids(
-            &array_bytes::hex2bytes(ext).unwrap(),
-            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
             &type_information,
             proof.leaves.iter(),
         )
@@ -503,11 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_leaves() {
-        // `Balances::transfer_keep_alive`
-        let ext = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
-        let additional_signed = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-
+    fn ensure_type_ids_included_in_proof() {
         let metadata = String::from_utf8(
             fs::read(format!(
                 "{}/fixtures/rococo_metadata_v15",
@@ -528,8 +524,8 @@ mod tests {
             .1;
 
         let proof = generate_proof_for_extrinsic(
-            &array_bytes::hex2bytes(ext).unwrap(),
-            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
             &metadata,
         )
         .unwrap();
@@ -541,39 +537,13 @@ mod tests {
         for extension in signed_extensions {
             println!("SignedExtension: {}", extension.identifier);
 
-            let included_in_extrinsic = extension.included_in_extrinsic.id();
-            let mut type_found = false;
-            if included_in_extrinsic.is_none() {
-                type_found = true;
-            } else {
-                for leaf in &proof.leaves {
-                    if let Some(included_id) = included_in_extrinsic {
-                        if leaf.type_id.0 == included_id {
-                            type_found = true;
-                            break;
-                        }
-                    }
-                }
+            if let Some(id) = extension.included_in_extrinsic.id() {
+                assert!(proof.leaves.iter().any(|l| l.type_id.0 == id));
             }
-            println!("Include in extrinsic found on Leaves: {}", type_found);
-            assert_eq!(type_found, true);
 
-            let included_in_signed_data = extension.included_in_signed_data.id();
-            let mut type_found = false;
-            if included_in_signed_data.is_none() {
-                type_found = true;
-            } else {
-                for leaf in &proof.leaves {
-                    if let Some(included_id) = included_in_signed_data {
-                        if leaf.type_id.0 == included_id {
-                            type_found = true;
-                            break;
-                        }
-                    }
-                }
+            if let Some(id) = extension.included_in_signed_data.id() {
+                assert!(proof.leaves.iter().any(|l| l.type_id.0 == id));
             }
-            println!("Include in signed data found on Leaves: {}.", type_found);
-            assert_eq!(type_found, true);
         }
     }
 }
