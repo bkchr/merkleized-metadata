@@ -507,4 +507,81 @@ mod tests {
             array_bytes::bytes2hex("0x", root_hash)
         );
     }
+
+    #[test]
+    fn generate_leaves() {
+        // `Balances::transfer_keep_alive`
+        let ext = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
+        let additional_signed = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+        let metadata = String::from_utf8(
+            fs::read(format!(
+                "{}/fixtures/rococo_metadata_v15",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+                .unwrap(),
+        )
+            .unwrap();
+
+        let metadata = Option::<Vec<u8>>::decode(
+            &mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+        )
+            .unwrap()
+            .unwrap();
+
+        let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..])
+            .unwrap()
+            .1;
+
+        let proof = generate_proof_for_extrinsic(
+            &array_bytes::hex2bytes(ext).unwrap(),
+            Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
+            &metadata,
+        )
+            .unwrap();
+
+        let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+
+
+        let type_information = prepared.as_type_information();
+        let signed_extensions = &type_information.extrinsic_metadata.signed_extensions;
+        for extension in signed_extensions {
+            println!("SignedExtension: {}", extension.identifier);
+
+            let included_in_extrinsic = extension.included_in_extrinsic.id();
+            let mut type_found = false;
+            if included_in_extrinsic.is_none() {
+                type_found = true;
+            } else {
+                for leaf in &proof.leaves {
+                    if let Some(included_id) = included_in_extrinsic {
+                        if leaf.type_id.0 == included_id {
+                            type_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            println!("Include in extrinsic found on Leaves: {}", type_found);
+            assert_eq!(type_found, true);
+
+
+            let included_in_signed_data = extension.included_in_signed_data.id();
+            let mut type_found = false;
+            if included_in_signed_data.is_none() {
+                type_found = true;
+            } else {
+                for leaf in &proof.leaves {
+                    if let Some(included_id) = included_in_signed_data {
+                        if leaf.type_id.0 == included_id {
+                            type_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            println!("Include in signed data found on Leaves: {}.", type_found);
+            assert_eq!(type_found, true);
+        }
+    }
 }
