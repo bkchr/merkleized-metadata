@@ -447,7 +447,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
                 .try_fold(visitor.clone(), |visitor, se| {
                     decode_with_visitor(
                         &mut additional,
-                        &se.included_in_extrinsic,
+                        &se.included_in_signed_data,
                         &type_resolver,
                         visitor,
                     )
