@@ -78,7 +78,7 @@ impl NodeIndex {
 
     /// Returns the index of the parent.
     fn parent(self) -> Self {
-        if self.0 == 0 {
+        if self.is_root() {
             Self(0)
         } else {
             Self((self.0 - 1) / 2)
@@ -108,7 +108,7 @@ impl NodeIndex {
     /// Returns `true` if `other` is a descendent.
     fn is_descendent(self, other: Self) -> bool {
         // If the index is `0`, it is the root
-        if self.0 == 0 {
+        if self.is_root() {
             return true;
         }
 
@@ -273,37 +273,29 @@ impl MerkleTree {
         // The position where to insert nodes left in the tree.
         let node_hashes_pos = node_hashes.len();
 
-        while !node_index.is_root() {
+        loop {
             let parent = node_index.parent();
-
-            if parent == stop_at_parent {
-                return Ok(());
-            }
 
             if node_index.is_left_child() {
                 let right_child = parent.right_child();
-                if let Some(next_leaf) = leaves.peek() {
-                    if **next_leaf == right_child {
-                        node_index = parent;
-                        // Skip the leaf
-                        leaves.next();
-                        continue;
-                    } else if right_child.is_descendent(**next_leaf) {
-                        let next_leaf = **next_leaf;
-                        // Skip the leaf as we are going to process it below.
-                        leaves.next();
+                if leaves.peek().map_or(false, |l| **l == right_child) {
+                    // Skip the leaf
+                    leaves.next();
+                } else if let Some(next_leaf) =
+                    leaves.peek().filter(|l| right_child.is_descendent(***l))
+                {
+                    let next_leaf = **next_leaf;
+                    // Skip the leaf as we are going to process it below.
+                    leaves.next();
 
-                        self.collect_node_hashes(parent, next_leaf, leaves, node_hashes)?;
-                        node_index = parent;
-                        continue;
-                    }
+                    self.collect_node_hashes(right_child, next_leaf, leaves, node_hashes)?;
+                } else {
+                    // No need to go down this right child, so we need store the hash.
+                    let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
+                        format!("Could not find hash for right child `{right_child:?}`.")
+                    })?;
+                    node_hashes.push(*hash);
                 }
-
-                // No need to go down this right child, so we need store the hash.
-                let hash = self.node_index_to_hash.get(&right_child).ok_or_else(|| {
-                    format!("Could not find hash for right child `{right_child:?}`.")
-                })?;
-                node_hashes.push(*hash);
             } else {
                 // As the leaves are sorted from left to right, the left child wasn't added yet.
                 let left_child = parent.left_child();
@@ -314,10 +306,12 @@ impl MerkleTree {
                 node_hashes.insert(node_hashes_pos, *hash);
             }
 
+            if parent == stop_at_parent {
+                return Ok(());
+            }
+
             node_index = parent;
         }
-
-        Ok(())
     }
 }
 
@@ -519,15 +513,15 @@ mod tests {
                 "{}/fixtures/rococo_metadata_v15",
                 env!("CARGO_MANIFEST_DIR")
             ))
-                .unwrap(),
+            .unwrap(),
         )
-            .unwrap();
+        .unwrap();
 
         let metadata = Option::<Vec<u8>>::decode(
             &mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
         )
-            .unwrap()
-            .unwrap();
+        .unwrap()
+        .unwrap();
 
         let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..])
             .unwrap()
@@ -538,10 +532,9 @@ mod tests {
             Some(&array_bytes::hex2bytes(additional_signed).unwrap()),
             &metadata,
         )
-            .unwrap();
+        .unwrap();
 
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
-
 
         let type_information = prepared.as_type_information();
         let signed_extensions = &type_information.extrinsic_metadata.signed_extensions;
@@ -564,7 +557,6 @@ mod tests {
             }
             println!("Include in extrinsic found on Leaves: {}", type_found);
             assert_eq!(type_found, true);
-
 
             let included_in_signed_data = extension.included_in_signed_data.id();
             let mut type_found = false;
