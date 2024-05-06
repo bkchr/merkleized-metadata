@@ -336,7 +336,7 @@ mod tests {
     use crate::{
         extrinsic_decoder::decode_extrinsic_and_collect_type_ids,
         from_frame_metadata::FrameMetadataPrepared,
-        generate_proof_for_extrinsic,
+        generate_proof_for_extrinsic, generate_proof_for_extrinsic_parts,
         types::{TypeDef, TypeDefArray, TypeRef},
     };
 
@@ -452,6 +452,8 @@ mod tests {
 
     // `Balances::transfer_keep_alive`
     const TEST_EXT: &str = "0x2d028400d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d01bce7c8f572d39cee240e3d50958f68a5c129e0ac0d4eb9222de70abdfa8c44382a78eded433782e6b614a97d8fd609a3f20162f3f3b3c16e7e8489b2bd4fa98c070000000403008eaf04151687736326c9fea17e25fc5287613693c912909cb226aa4794f26a4828";
+    const TEST_CALL: &str =
+        "0x04030052bc71c1eca5353749542dfdf0af97bf764f9c2f44e860cd485f1cd86400f6490f0080c6a47e8d03";
     const TEST_ADDITIONAL_SIGNED: &str = "0x00b2590f001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
     #[test]
@@ -555,5 +557,60 @@ mod tests {
                 assert!(proof.leaves.iter().any(|l| l.type_id.0 == id));
             }
         }
+    }
+
+    #[test]
+    fn generate_proof_for_call() {
+        let metadata = String::from_utf8(
+            fs::read(format!(
+                "{}/fixtures/rococo_metadata_v15",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let metadata = Option::<Vec<u8>>::decode(
+            &mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+        )
+        .unwrap()
+        .unwrap();
+
+        let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..])
+            .unwrap()
+            .1;
+
+        let proof = generate_proof_for_extrinsic_parts(
+            &array_bytes::hex2bytes(TEST_CALL).unwrap(),
+            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+            &metadata,
+        )
+        .unwrap();
+
+        let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+        let type_information = prepared.as_type_information();
+
+        // Decoding the extrinsic using this proof should work.
+        decode_extrinsic_and_collect_type_ids(
+            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+            &type_information,
+            proof.leaves.iter(),
+        )
+        .unwrap();
+
+        let merkle_tree = MerkleTree::new(prepared.as_type_information().types);
+
+        let root_hash = get_hash(
+            &mut &proof.leaf_indices[..],
+            &mut &proof.leaves[..],
+            &mut &proof.nodes[..],
+            NodeIndex(0),
+            &merkle_tree,
+        );
+        assert_eq!(
+            array_bytes::bytes2hex("0x", merkle_tree.root()),
+            array_bytes::bytes2hex("0x", root_hash)
+        );
     }
 }

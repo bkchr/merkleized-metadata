@@ -142,6 +142,42 @@ struct CollectAccessedTypes {
     accessed_types: BTreeSet<TypeId>,
 }
 
+impl CollectAccessedTypes {
+    /// Collect all the types that are reachable from `type_ref`.
+    fn collect_all_types(&mut self, type_ref: &TypeRef, type_information: &TypeInformation) {
+        if let Some(id) = type_ref.id() {
+            type_information
+                .types
+                .iter()
+                .filter(|(k, _)| k.type_id() == id)
+                .for_each(|(ty_id, ty)| {
+                    if !self.accessed_types.insert(*ty_id) {
+                        // We already recorded this type.
+                        return;
+                    }
+
+                    match &ty.type_def {
+                        TypeDef::Array(a) => {
+                            self.collect_all_types(&a.type_param, type_information)
+                        }
+                        TypeDef::Composite(c) => c
+                            .iter()
+                            .for_each(|f| self.collect_all_types(&f.ty, type_information)),
+                        TypeDef::Enumeration(e) => e
+                            .fields
+                            .iter()
+                            .for_each(|f| self.collect_all_types(&f.ty, type_information)),
+                        TypeDef::Sequence(s) => self.collect_all_types(&s, type_information),
+                        TypeDef::Tuple(t) => t
+                            .iter()
+                            .for_each(|t| self.collect_all_types(t, type_information)),
+                        TypeDef::BitSequence(_) => {}
+                    }
+                })
+        }
+    }
+}
+
 impl Visitor for CollectAccessedTypes {
     type TypeResolver = TypeResolver;
     type Value<'scale, 'resolver> = Self;
@@ -440,6 +476,61 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
 
     let visitor = additional_signed
         .map(|mut additional| {
+            type_information
+                .extrinsic_metadata
+                .signed_extensions
+                .iter()
+                .try_fold(visitor.clone(), |visitor, se| {
+                    decode_with_visitor(
+                        &mut additional,
+                        &se.included_in_signed_data,
+                        &type_resolver,
+                        visitor,
+                    )
+                    .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
+                })
+        })
+        .unwrap_or_else(|| Ok(visitor))?;
+
+    Ok(visitor.accessed_types.into_iter().collect())
+}
+
+pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
+    mut call: &[u8],
+    additional_signed: Option<&[u8]>,
+    type_information: &TypeInformation,
+    types: impl Iterator<Item = &'a Type>,
+) -> Result<Vec<TypeId>, String> {
+    let type_resolver = TypeResolver::new(types);
+
+    let mut visitor = CollectAccessedTypes::default();
+
+    let mut visitor = decode_with_visitor(
+        &mut call,
+        &type_information.extrinsic_metadata.call_ty,
+        &type_resolver,
+        visitor,
+    )
+    .map_err(|e| format!("Failed to decode signature: {e}"))?;
+
+    let visitor = additional_signed
+        .map(|mut additional| {
+            visitor.collect_all_types(
+                &type_information.extrinsic_metadata.address_ty,
+                type_information,
+            );
+            visitor.collect_all_types(
+                &type_information.extrinsic_metadata.signature_ty,
+                type_information,
+            );
+            type_information
+                .extrinsic_metadata
+                .signed_extensions
+                .iter()
+                .for_each(|se| {
+                    visitor.collect_all_types(&se.included_in_extrinsic, type_information);
+                });
+
             type_information
                 .extrinsic_metadata
                 .signed_extensions

@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use extrinsic_decoder::decode_extrinsic_and_collect_type_ids;
+use extrinsic_decoder::{decode_extrinsic_and_collect_type_ids, decode_extrinsic_parts_and_collect_type_ids};
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
 use merkle_tree::{MerkleTree, Proof};
@@ -48,7 +48,12 @@ pub fn generate_metadata_digest(
 
 /// Generate a proof for the given `extrinsic` using the given `metadata`.
 ///
-/// `additonal_signed` can be passed as well to include the types required for decoding it in the proof as well.
+/// If `additional_data` is `Some(_)`, it will be decoded as well and the
+/// required type information are included in the proof.
+///
+/// If the full `extrinsic` is not available, [`generate_proof_for_extrinsic_parts`]
+/// is maybe the better option as it only requires the `call` and the
+/// `additional_data`.
 pub fn generate_proof_for_extrinsic(
     extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
@@ -59,6 +64,32 @@ pub fn generate_proof_for_extrinsic(
 
     let accessed_types = decode_extrinsic_and_collect_type_ids(
         extrinsic,
+        additional_signed,
+        &type_information,
+        type_information.types.values(),
+    )?;
+
+    MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
+}
+
+/// Generate a proof for the given extrinsic parts using the given `metadata`.
+///
+/// This generates a proof that contains all the types required to decode an
+/// extrinsic that is build using the given `call` and `additional_data`. When
+/// `additional_signed` is `Some(_)` it is assumed that the extrinsic is signed
+/// and thus, all the signed extension types are included in the proof as well.
+/// The same applies for the `sigature` and `address` types which are only
+/// included when `additional_signed` is `Some(_)`.
+pub fn generate_proof_for_extrinsic_parts(
+    call: &[u8],
+    additional_signed: Option<&[u8]>,
+    metadata: &RuntimeMetadata,
+) -> Result<Proof, String> {
+    let prepared = FrameMetadataPrepared::prepare(metadata)?;
+    let type_information = prepared.as_type_information();
+
+    let accessed_types = decode_extrinsic_parts_and_collect_type_ids(
+        call,
         additional_signed,
         &type_information,
         type_information.types.values(),
