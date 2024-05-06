@@ -306,7 +306,12 @@ impl Visitor for CollectAccessedTypes {
                 .expect("Sequence is always referenced by id; qed"),
         ));
 
-        value.decode_item(self.clone()).unwrap_or(Ok(self))
+        let mut visitor = self;
+        while let Some(field) = value.next() {
+            visitor = field?.decode_with_visitor(visitor)?;
+        }
+
+        Ok(visitor)
     }
 
     fn visit_composite<'scale, 'resolver>(
@@ -326,8 +331,8 @@ impl Visitor for CollectAccessedTypes {
         ));
 
         let mut visitor = self;
-        while let Some(v) = value.decode_item(visitor.clone()) {
-            visitor = v?;
+        while let Some(field) = value.next() {
+            visitor = field?.decode_with_visitor(visitor)?;
         }
 
         Ok(visitor)
@@ -343,8 +348,8 @@ impl Visitor for CollectAccessedTypes {
         ));
 
         let mut visitor = self;
-        while let Some(v) = value.decode_item(visitor.clone()) {
-            visitor = v?;
+        while let Some(field) = value.next() {
+            visitor = field?.decode_with_visitor(visitor)?;
         }
 
         Ok(visitor)
@@ -371,8 +376,8 @@ impl Visitor for CollectAccessedTypes {
         });
 
         let mut visitor = self;
-        while let Some(v) = value.fields().decode_item(visitor.clone()) {
-            visitor = v?;
+        while let Some(field) = value.fields().next() {
+            visitor = field?.decode_with_visitor(visitor)?;
         }
 
         Ok(visitor)
@@ -390,9 +395,10 @@ impl Visitor for CollectAccessedTypes {
         ));
 
         let mut visitor = self;
-        while let Some(v) = value.decode_item(visitor.clone()) {
-            visitor = v?;
+        while let Some(field) = value.next() {
+            visitor = field?.decode_with_visitor(visitor)?;
         }
+
         Ok(visitor)
     }
 
@@ -472,7 +478,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
         &type_resolver,
         visitor,
     )
-    .map_err(|e| format!("Failed to decode signature: {e}"))?;
+    .map_err(|e| format!("Failed to decode call: {e}"))?;
 
     let visitor = additional_signed
         .map(|mut additional| {
@@ -503,7 +509,7 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
 ) -> Result<Vec<TypeId>, String> {
     let type_resolver = TypeResolver::new(types);
 
-    let mut visitor = CollectAccessedTypes::default();
+    let visitor = CollectAccessedTypes::default();
 
     let mut visitor = decode_with_visitor(
         &mut call,
@@ -511,7 +517,7 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
         &type_resolver,
         visitor,
     )
-    .map_err(|e| format!("Failed to decode signature: {e}"))?;
+    .map_err(|e| format!("Failed to decode call: {e}"))?;
 
     let visitor = additional_signed
         .map(|mut additional| {
