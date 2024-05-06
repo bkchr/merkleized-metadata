@@ -72,6 +72,25 @@ pub fn generate_proof_for_extrinsic(
     MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
 }
 
+pub fn verify_proof(
+    extrinsic: &[u8],
+    additional_signed: Option<&[u8]>,
+    metadata: &RuntimeMetadata,
+    proof: &Proof,
+) -> Result<(), String> {
+    let prepared = FrameMetadataPrepared::prepare(metadata)?;
+    let type_information = prepared.as_type_information();
+
+    decode_extrinsic_and_collect_type_ids(
+        extrinsic,
+        additional_signed,
+        &type_information,
+        proof.leaves.iter(),
+    )?;
+
+    Ok(())
+}
+
 /// Generate a proof for the given extrinsic parts using the given `metadata`.
 ///
 /// This generates a proof that contains all the types required to decode an

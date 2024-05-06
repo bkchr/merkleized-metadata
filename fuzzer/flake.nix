@@ -12,14 +12,6 @@
   flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = nixpkgs.legacyPackages.${system};
-      myrust = with fenix.packages.${system}; with stable; combine [
-        cargo
-        clippy
-        rust-src
-        rustc
-        latest.rustfmt
-        targets.wasm32-unknown-unknown.stable.rust-std
-      ];
     in {
       devShells.default = pkgs.mkShell {
         name = "honggfuzz-shell";
@@ -28,8 +20,9 @@
           libbfd
           bintools-unwrapped
           libunwind
+          lldb
 
-          honggfuzz.packages.honggfuzz-rs
+          honggfuzz.packages.${system}.default
         ];
 
         # Fortify causes build failures: 'str*' defined both normally and as 'alias' attribute
