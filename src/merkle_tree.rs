@@ -486,15 +486,18 @@ mod tests {
 
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
         let type_information = prepared.as_type_information();
+        let ext = array_bytes::hex2bytes(TEST_EXT).unwrap();
+        let ext_ptr = &mut &ext[..];
 
         // Check that we have included all the required types in the proof.
         let accessed_types = decode_extrinsic_and_collect_type_ids(
-            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            ext_ptr,
             Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
             &type_information,
             proof.leaves.iter(),
         )
         .unwrap();
+        assert!(ext_ptr.is_empty());
 
         let merkle_tree = MerkleTree::new(prepared.as_type_information().types);
         let proof2 = merkle_tree.build_proof(accessed_types).unwrap();
@@ -592,7 +595,7 @@ mod tests {
 
         // Decoding the extrinsic using this proof should work.
         decode_extrinsic_and_collect_type_ids(
-            &array_bytes::hex2bytes(TEST_EXT).unwrap(),
+            &mut &array_bytes::hex2bytes(TEST_EXT).unwrap()[..],
             Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
             &type_information,
             proof.leaves.iter(),

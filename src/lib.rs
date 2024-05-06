@@ -55,7 +55,7 @@ pub fn generate_metadata_digest(
 /// is maybe the better option as it only requires the `call` and the
 /// `additional_data`.
 pub fn generate_proof_for_extrinsic(
-    extrinsic: &[u8],
+    mut extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
@@ -63,7 +63,7 @@ pub fn generate_proof_for_extrinsic(
     let type_information = prepared.as_type_information();
 
     let accessed_types = decode_extrinsic_and_collect_type_ids(
-        extrinsic,
+        &mut extrinsic,
         additional_signed,
         &type_information,
         type_information.types.values(),
@@ -73,7 +73,7 @@ pub fn generate_proof_for_extrinsic(
 }
 
 pub fn verify_proof(
-    extrinsic: &[u8],
+    mut extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
     metadata: &RuntimeMetadata,
     proof: &Proof,
@@ -82,7 +82,7 @@ pub fn verify_proof(
     let type_information = prepared.as_type_information();
 
     decode_extrinsic_and_collect_type_ids(
-        extrinsic,
+        &mut extrinsic,
         additional_signed,
         &type_information,
         proof.leaves.iter(),
@@ -100,7 +100,7 @@ pub fn verify_proof(
 /// The same applies for the `sigature` and `address` types which are only
 /// included when `additional_signed` is `Some(_)`.
 pub fn generate_proof_for_extrinsic_parts(
-    call: &[u8],
+    mut call: &[u8],
     additional_signed: Option<&[u8]>,
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
@@ -108,7 +108,7 @@ pub fn generate_proof_for_extrinsic_parts(
     let type_information = prepared.as_type_information();
 
     let accessed_types = decode_extrinsic_parts_and_collect_type_ids(
-        call,
+        &mut call,
         additional_signed,
         &type_information,
         type_information.types.values(),

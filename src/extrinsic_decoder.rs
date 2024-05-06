@@ -417,17 +417,17 @@ impl Visitor for CollectAccessedTypes {
 }
 
 pub fn decode_extrinsic_and_collect_type_ids<'a>(
-    mut extrinsic: &[u8],
+    extrinsic: &mut &[u8],
     additional_signed: Option<&[u8]>,
     type_information: &TypeInformation,
     types: impl Iterator<Item = &'a Type>,
 ) -> Result<Vec<TypeId>, String> {
     let type_resolver = TypeResolver::new(types);
 
-    let _length = Compact::<u32>::decode(&mut extrinsic)
+    let _length = Compact::<u32>::decode(extrinsic)
         .map_err(|e| format!("Failed to read length: {e}"))?;
 
-    let version = (&mut extrinsic)
+    let version = (extrinsic)
         .read_byte()
         .map_err(|e| format!("Failed to read version byte: {e}"))?;
 
@@ -440,7 +440,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
     let visitor = is_signed
         .then(|| {
             let visitor = decode_with_visitor(
-                &mut extrinsic,
+                extrinsic,
                 &type_information.extrinsic_metadata.address_ty,
                 &type_resolver,
                 CollectAccessedTypes::default(),
@@ -448,7 +448,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
             .map_err(|e| format!("Failed to decode address: {e}"))?;
 
             let visitor = decode_with_visitor(
-                &mut extrinsic,
+                extrinsic,
                 &type_information.extrinsic_metadata.signature_ty,
                 &type_resolver,
                 visitor,
@@ -461,7 +461,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
                 .iter()
                 .try_fold(visitor, |visitor, se| {
                     decode_with_visitor(
-                        &mut extrinsic,
+                        extrinsic,
                         &se.included_in_extrinsic,
                         &type_resolver,
                         visitor,
@@ -473,7 +473,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
         .unwrap_or_default();
 
     let visitor = decode_with_visitor(
-        &mut extrinsic,
+        extrinsic,
         &type_information.extrinsic_metadata.call_ty,
         &type_resolver,
         visitor,
@@ -502,7 +502,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
 }
 
 pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
-    mut call: &[u8],
+    call: &mut &[u8],
     additional_signed: Option<&[u8]>,
     type_information: &TypeInformation,
     types: impl Iterator<Item = &'a Type>,
@@ -512,7 +512,7 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
     let visitor = CollectAccessedTypes::default();
 
     let mut visitor = decode_with_visitor(
-        &mut call,
+        call,
         &type_information.extrinsic_metadata.call_ty,
         &type_resolver,
         visitor,
