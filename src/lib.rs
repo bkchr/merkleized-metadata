@@ -3,7 +3,9 @@
 extern crate alloc;
 
 use alloc::string::String;
-use extrinsic_decoder::{decode_extrinsic_and_collect_type_ids, decode_extrinsic_parts_and_collect_type_ids};
+use extrinsic_decoder::{
+    decode_extrinsic_and_collect_type_ids, decode_extrinsic_parts_and_collect_type_ids,
+};
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
 use merkle_tree::{MerkleTree, Proof};
@@ -62,12 +64,18 @@ pub fn generate_proof_for_extrinsic(
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
     let type_information = prepared.as_type_information();
 
+    let extrinsic = &mut extrinsic;
+
     let accessed_types = decode_extrinsic_and_collect_type_ids(
-        &mut extrinsic,
+        extrinsic,
         additional_signed,
         &type_information,
         type_information.types.values(),
     )?;
+
+    if !extrinsic.is_empty() {
+        return Err("Bytes left in `extrinsic` after decoding".into());
+    }
 
     MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
 }
@@ -107,12 +115,18 @@ pub fn generate_proof_for_extrinsic_parts(
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
     let type_information = prepared.as_type_information();
 
+    let call = &mut call;
+
     let accessed_types = decode_extrinsic_parts_and_collect_type_ids(
-        &mut call,
+        call,
         additional_signed,
         &type_information,
         type_information.types.values(),
     )?;
+
+    if !call.is_empty() {
+        return Err("Bytes left in `call` after decoding".into());
+    }
 
     MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
 }

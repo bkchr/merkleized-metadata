@@ -35,7 +35,7 @@ fn main() {
                 return;
             };
 
-            dbg!("Generated valid extrinsic");
+            println!("Generated valid extrinsic");
 
             verify_proof(extrinsic, additional_signed.as_deref(), &metadata, &proof).unwrap()
         });
