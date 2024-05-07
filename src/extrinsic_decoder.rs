@@ -1,3 +1,5 @@
+use core::sync::atomic::AtomicUsize;
+
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -19,8 +21,13 @@ use crate::{
     types::{Type, TypeDef, TypeRef},
 };
 
+/// Decoding happens recursively and we need some upper bound to stop somewhere
+/// to prevent a stack overflow.
+const MAX_STACK_DEPTH: usize = 1000;
+
 struct TypeResolver {
     raw_type_id_to_types: BTreeMap<u32, Vec<Type>>,
+    stack_depth: AtomicUsize,
 }
 
 impl TypeResolver {
@@ -30,6 +37,7 @@ impl TypeResolver {
                 map.entry(ty.type_id.0).or_default().push(ty.clone());
                 map
             }),
+            stack_depth: Default::default(),
         }
     }
 }
@@ -71,6 +79,14 @@ impl scale_decode::TypeResolver for TypeResolver {
                 return Ok(visitor.visit_composite(core::iter::empty(), core::iter::empty()))
             }
         };
+
+        if self
+            .stack_depth
+            .fetch_add(1, core::sync::atomic::Ordering::Relaxed)
+            >= MAX_STACK_DEPTH
+        {
+            return Err("Reached stack limit".into());
+        }
 
         let types = self
             .raw_type_id_to_types
@@ -140,6 +156,9 @@ impl scale_decode::TypeResolver for TypeResolver {
                 visitor.visit_bit_sequence(store_format, bit_order)
             }
         };
+
+        self.stack_depth
+            .fetch_sub(1, core::sync::atomic::Ordering::Relaxed);
 
         Ok(value)
     }
