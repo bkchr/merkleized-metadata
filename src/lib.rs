@@ -110,11 +110,11 @@ pub struct SignedExtrinsicData<'a> {
 /// Generate a proof for the given extrinsic parts using the given `metadata`.
 ///
 /// This generates a proof that contains all the types required to decode an
-/// extrinsic that is build using the given `call` and `additional_data`. When
-/// `additional_signed` is `Some(_)` it is assumed that the extrinsic is signed
+/// extrinsic that is build using the given `call` and `signed_ext_data`. When
+/// `signed_ext_data` is `Some(_)` it is assumed that the extrinsic is signed
 /// and thus, all the signed extension types are included in the proof as well.
 /// The same applies for the `sigature` and `address` types which are only
-/// included when `additional_signed` is `Some(_)`.
+/// included when `signed_ext_data` is `Some(_)`.
 pub fn generate_proof_for_extrinsic_parts(
     mut call: &[u8],
     signed_ext_data: Option<SignedExtrinsicData>,
