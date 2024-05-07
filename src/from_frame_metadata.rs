@@ -45,26 +45,29 @@ impl FrameMetadataPrepared {
             extrinsic_metadata.call_ty.id,
             &mut accessible_types,
             &frame_type_registry,
-        );
+        )?;
         collect_accessible_types(
             extrinsic_metadata.address_ty.id,
             &mut accessible_types,
             &frame_type_registry,
-        );
+        )?;
         collect_accessible_types(
             extrinsic_metadata.signature_ty.id,
             &mut accessible_types,
             &frame_type_registry,
-        );
+        )?;
 
-        extrinsic_metadata.signed_extensions.iter().for_each(|se| {
-            collect_accessible_types(se.ty.id, &mut accessible_types, &frame_type_registry);
-            collect_accessible_types(
-                se.additional_signed.id,
-                &mut accessible_types,
-                &frame_type_registry,
-            );
-        });
+        extrinsic_metadata
+            .signed_extensions
+            .iter()
+            .try_for_each(|se| {
+                collect_accessible_types(se.ty.id, &mut accessible_types, &frame_type_registry)?;
+                collect_accessible_types(
+                    se.additional_signed.id,
+                    &mut accessible_types,
+                    &frame_type_registry,
+                )
+            })?;
 
         Ok(Self {
             frame_type_registry,
@@ -132,31 +135,35 @@ fn collect_accessible_types(
     ty_id: u32,
     accessible_types: &mut BTreeSet<u32>,
     registry: &PortableRegistry,
-) {
+) -> Result<(), String> {
     if !accessible_types.insert(ty_id) {
-        return;
+        return Ok(());
     }
 
-    let ty = &registry.types[ty_id as usize].ty;
+    let ty = &registry
+        .types
+        .get(ty_id as usize)
+        .ok_or_else(|| format!("Could not find type with id `{ty_id}` in the registry"))?
+        .ty;
 
     match &ty.type_def {
         TypeDef::Composite(c) => c
             .fields
             .iter()
-            .for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry)),
-        TypeDef::Variant(v) => v.variants.iter().for_each(|v| {
+            .try_for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry))?,
+        TypeDef::Variant(v) => v.variants.iter().try_for_each(|v| {
             v.fields
                 .iter()
-                .for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry))
-        }),
+                .try_for_each(|f| collect_accessible_types(f.ty.id, accessible_types, registry))
+        })?,
         TypeDef::Sequence(s) => {
-            collect_accessible_types(s.type_param.id, accessible_types, registry)
+            collect_accessible_types(s.type_param.id, accessible_types, registry)?
         }
-        TypeDef::Array(a) => collect_accessible_types(a.type_param.id, accessible_types, registry),
+        TypeDef::Array(a) => collect_accessible_types(a.type_param.id, accessible_types, registry)?,
         TypeDef::Tuple(t) => t
             .fields
             .iter()
-            .for_each(|t| collect_accessible_types(t.id, accessible_types, registry)),
+            .try_for_each(|t| collect_accessible_types(t.id, accessible_types, registry))?,
         // Primitive types are not individual types in the final type information.
         TypeDef::Primitive(_) => {}
         // `Compact` is converted to a primitive like type and thus, the inner type is not required.
@@ -164,6 +171,8 @@ fn collect_accessible_types(
         // The order and store types are also not required.
         TypeDef::BitSequence(_) => {}
     };
+
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

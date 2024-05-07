@@ -2,7 +2,6 @@ use codec::Decode;
 use frame_metadata::RuntimeMetadataPrefixed;
 use honggfuzz::fuzz;
 use merkleized_metadata::{generate_proof_for_extrinsic, verify_proof};
-use std::fs;
 
 fn main() {
     loop {
