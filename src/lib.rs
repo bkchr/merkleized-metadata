@@ -99,6 +99,14 @@ pub fn verify_proof(
     Ok(())
 }
 
+/// Data that is required for a signed extrinsic.
+pub struct SignedExtrinsicData<'a> {
+    /// The data that is directly included in the extrinsic.
+    pub included_in_extrinsic: &'a [u8],
+    /// The data that is included in the signed data.
+    pub included_in_signed_data: &'a [u8],
+}
+
 /// Generate a proof for the given extrinsic parts using the given `metadata`.
 ///
 /// This generates a proof that contains all the types required to decode an
@@ -109,7 +117,7 @@ pub fn verify_proof(
 /// included when `additional_signed` is `Some(_)`.
 pub fn generate_proof_for_extrinsic_parts(
     mut call: &[u8],
-    additional_signed: Option<&[u8]>,
+    signed_ext_data: Option<SignedExtrinsicData>,
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
@@ -119,7 +127,7 @@ pub fn generate_proof_for_extrinsic_parts(
 
     let accessed_types = decode_extrinsic_parts_and_collect_type_ids(
         call,
-        additional_signed,
+        signed_ext_data,
         &type_information,
         type_information.types.values(),
     )?;

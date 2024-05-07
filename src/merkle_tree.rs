@@ -127,7 +127,7 @@ impl NodeIndex {
 }
 
 /// A proof containing all the nodes to decode a specific extrinsic.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Encode)]
 pub struct Proof {
     pub leaves: Vec<Type>,
     pub leaf_indices: Vec<u32>,
@@ -338,6 +338,7 @@ mod tests {
         from_frame_metadata::FrameMetadataPrepared,
         generate_proof_for_extrinsic, generate_proof_for_extrinsic_parts,
         types::{TypeDef, TypeDefArray, TypeRef},
+        SignedExtrinsicData,
     };
 
     #[test]
@@ -583,9 +584,14 @@ mod tests {
             .unwrap()
             .1;
 
+        let signed_ext_data = SignedExtrinsicData {
+            included_in_signed_data: &array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap(),
+            included_in_extrinsic: &array_bytes::hex2bytes("0x07000000").unwrap(),
+        };
+
         let proof = generate_proof_for_extrinsic_parts(
             &array_bytes::hex2bytes(TEST_CALL).unwrap(),
-            Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+            Some(signed_ext_data),
             &metadata,
         )
         .unwrap();

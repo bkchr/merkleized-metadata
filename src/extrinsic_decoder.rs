@@ -19,6 +19,7 @@ use crate::{
     from_frame_metadata::TypeInformation,
     merkle_tree::TypeId,
     types::{Type, TypeDef, TypeRef},
+    SignedExtrinsicData,
 };
 
 /// Decoding happens recursively and we need some upper bound to stop somewhere
@@ -530,7 +531,7 @@ pub fn decode_extrinsic_and_collect_type_ids<'a>(
 
 pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
     call: &mut &[u8],
-    additional_signed: Option<&[u8]>,
+    signed_ext_data: Option<SignedExtrinsicData>,
     type_information: &TypeInformation,
     types: impl Iterator<Item = &'a Type>,
 ) -> Result<Vec<TypeId>, String> {
@@ -546,8 +547,8 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
     )
     .map_err(|e| format!("Failed to decode call: {e}"))?;
 
-    let visitor = additional_signed
-        .map(|mut additional| {
+    let visitor = signed_ext_data
+        .map(|mut signed_ext_data| {
             visitor.collect_all_types(
                 &type_information.extrinsic_metadata.address_ty,
                 type_information,
@@ -556,26 +557,40 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
                 &type_information.extrinsic_metadata.signature_ty,
                 type_information,
             );
-            type_information
-                .extrinsic_metadata
-                .signed_extensions
-                .iter()
-                .for_each(|se| {
-                    visitor.collect_all_types(&se.included_in_extrinsic, type_information);
-                });
+
+            let included_in_extrinsic = &mut signed_ext_data.included_in_extrinsic;
+            let included_in_signed_data = &mut signed_ext_data.included_in_signed_data;
 
             type_information
                 .extrinsic_metadata
                 .signed_extensions
                 .iter()
                 .try_fold(visitor.clone(), |visitor, se| {
+                    let visitor = decode_with_visitor(
+                        included_in_extrinsic,
+                        se.included_in_extrinsic,
+                        &type_resolver,
+                        visitor,
+                    )
+                    .map_err(|e| {
+                        format!(
+                            "Failed to decode data in extrinsic ({}): {e}",
+                            se.identifier
+                        )
+                    })?;
+
                     decode_with_visitor(
-                        &mut additional,
+                        included_in_signed_data,
                         se.included_in_signed_data,
                         &type_resolver,
                         visitor,
                     )
-                    .map_err(|e| format!("Failed to decode extra ({}): {e}", se.identifier))
+                    .map_err(|e| {
+                        format!(
+                            "Failed to decode signed extra data ({}): {e}",
+                            se.identifier
+                        )
+                    })
                 })
         })
         .unwrap_or_else(|| Ok(visitor))?;
