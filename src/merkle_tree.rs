@@ -485,7 +485,7 @@ mod tests {
         .unwrap();
 
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
-        let type_information = prepared.as_type_information();
+        let type_information = prepared.as_type_information().unwrap();
         let ext = array_bytes::hex2bytes(TEST_EXT).unwrap();
         let ext_ptr = &mut &ext[..];
 
@@ -499,7 +499,7 @@ mod tests {
         .unwrap();
         assert!(ext_ptr.is_empty());
 
-        let merkle_tree = MerkleTree::new(prepared.as_type_information().types);
+        let merkle_tree = MerkleTree::new(prepared.as_type_information().unwrap().types);
         let proof2 = merkle_tree.build_proof(accessed_types).unwrap();
 
         assert_eq!(proof, proof2);
@@ -547,7 +547,7 @@ mod tests {
 
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
 
-        let type_information = prepared.as_type_information();
+        let type_information = prepared.as_type_information().unwrap();
         let signed_extensions = &type_information.extrinsic_metadata.signed_extensions;
         for extension in signed_extensions {
             println!("SignedExtension: {}", extension.identifier);
@@ -591,7 +591,7 @@ mod tests {
         .unwrap();
 
         let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
-        let type_information = prepared.as_type_information();
+        let type_information = prepared.as_type_information().unwrap();
 
         // Decoding the extrinsic using this proof should work.
         decode_extrinsic_and_collect_type_ids(
@@ -602,7 +602,7 @@ mod tests {
         )
         .unwrap();
 
-        let merkle_tree = MerkleTree::new(prepared.as_type_information().types);
+        let merkle_tree = MerkleTree::new(prepared.as_type_information().unwrap().types);
 
         let root_hash = get_hash(
             &mut &proof.leaf_indices[..],

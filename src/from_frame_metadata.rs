@@ -80,7 +80,7 @@ impl FrameMetadataPrepared {
         &self.frame_type_registry.types[id as usize].ty
     }
 
-    pub fn as_type_information(&self) -> TypeInformation {
+    pub fn as_type_information(&self) -> Result<TypeInformation, String> {
         let mut next_id = 0;
         let frame_id_to_id = self
             .accessible_types
@@ -99,35 +99,38 @@ impl FrameMetadataPrepared {
             frame_type_registry: &self.frame_type_registry,
         };
 
-        let extrinsic_metadata = self.extrinsic_metadata.as_basic_type(type_context);
-        let types = frame_id_to_id
-            .iter()
-            .map(|(frame_id, id)| {
-                self.get_type(*frame_id)
-                    .as_basic_type(type_context)
-                    .into_iter()
-                    .map(|mut ty| {
-                        ty.type_id = id.into();
+        let extrinsic_metadata = self.extrinsic_metadata.as_basic_type(type_context)?;
+        let types =
+            frame_id_to_id
+                .iter()
+                .try_fold(BTreeMap::default(), |mut res, (frame_id, id)| {
+                    res.extend(
+                        self.get_type(*frame_id)
+                            .as_basic_type(type_context)?
+                            .into_iter()
+                            .map(|mut ty| {
+                                ty.type_id = id.into();
 
-                        let id = if let Some(variant) = ty.type_def.as_enumeration() {
-                            TypeId::Enumeration {
-                                type_id: *id,
-                                variant: variant.index.0,
-                            }
-                        } else {
-                            TypeId::Other(*id)
-                        };
+                                let id = if let Some(variant) = ty.type_def.as_enumeration() {
+                                    TypeId::Enumeration {
+                                        type_id: *id,
+                                        variant: variant.index.0,
+                                    }
+                                } else {
+                                    TypeId::Other(*id)
+                                };
 
-                        (id, ty)
-                    })
-            })
-            .flatten()
-            .collect::<BTreeMap<_, _>>();
+                                (id, ty)
+                            }),
+                    );
 
-        TypeInformation {
+                    Ok::<_, String>(res)
+                })?;
+
+        Ok(TypeInformation {
             extrinsic_metadata,
             types,
-        }
+        })
     }
 }
 
@@ -182,19 +185,23 @@ struct TypeContext<'a> {
 }
 
 impl<'a> TypeContext<'a> {
-    fn get_type(&self, id: u32) -> &Type<PortableForm> {
-        &self.frame_type_registry.types[id as usize].ty
+    fn get_type(&self, id: u32) -> Result<&Type<PortableForm>, String> {
+        self.frame_type_registry
+            .types
+            .get(id as usize)
+            .map(|t| &t.ty)
+            .ok_or_else(|| format!("Could not find type for id `{id}`."))
     }
 }
 
 trait AsBasicTypeRef {
-    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> types::TypeRef;
+    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> Result<types::TypeRef, String>;
 }
 
 trait AsBasicType {
     type BasicType;
 
-    fn as_basic_type(&self, context: TypeContext<'_>) -> Self::BasicType;
+    fn as_basic_type(&self, context: TypeContext<'_>) -> Result<Self::BasicType, String>;
 }
 
 trait IsBasicType {
@@ -202,13 +209,13 @@ trait IsBasicType {
 }
 
 impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
-    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> types::TypeRef {
-        let frame_type = context.get_type(self.id);
+    fn as_basic_type_ref(&self, context: TypeContext<'_>) -> Result<types::TypeRef, String> {
+        let frame_type = context.get_type(self.id)?;
 
         let mut collector = CollectPrimitives::default();
-        collector.visit_type(context, frame_type);
+        collector.visit_type(context, frame_type)?;
 
-        match &frame_type.type_def {
+        Ok(match &frame_type.type_def {
             TypeDef::Primitive(p) => match p {
                 scale_info::TypeDefPrimitive::Bool => types::TypeRef::Bool,
                 scale_info::TypeDefPrimitive::Char => types::TypeRef::Char,
@@ -228,7 +235,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
             },
             TypeDef::Compact(_) => {
                 if collector.found.len() > 1 {
-                    panic!("Unexpected: {:?}", collector.found)
+                    return Err(format!("Unexpected: {:?}", collector.found));
                 } else if let Some(found) = collector.found.first() {
                     match found {
                         scale_info::TypeDefPrimitive::U8 => types::TypeRef::CompactU8,
@@ -236,7 +243,9 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
                         scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
                         scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
                         scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
-                        p => panic!("Unsupported primitive type for `Compact`: {p:?}"),
+                        p => {
+                            return Err(format!("Unsupported primitive type for `Compact`: {p:?}"))
+                        }
                     }
                 } else {
                     types::TypeRef::Void
@@ -246,14 +255,14 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
             TypeDef::Composite(c) if c.fields.is_empty() => types::TypeRef::Void,
             TypeDef::Tuple(t) if t.fields.is_empty() => types::TypeRef::Void,
             _ => types::TypeRef::ById(context.frame_id_to_id.get(&self.id).unwrap().into()),
-        }
+        })
     }
 }
 
 impl AsBasicType for Type<PortableForm> {
     type BasicType = Vec<types::Type>;
 
-    fn as_basic_type(&self, context: TypeContext) -> Self::BasicType {
+    fn as_basic_type(&self, context: TypeContext) -> Result<Self::BasicType, String> {
         let path = self
             .path
             .segments
@@ -262,44 +271,49 @@ impl AsBasicType for Type<PortableForm> {
             .collect::<Vec<_>>();
 
         let type_def = match &self.type_def {
-            TypeDef::Compact(_) | TypeDef::Primitive(_) => return Vec::new(),
-            TypeDef::Composite(c) if c.fields.is_empty() => return Vec::new(),
-            TypeDef::Variant(v) if v.variants.is_empty() => return Vec::new(),
-            TypeDef::Tuple(t) if t.fields.is_empty() => return Vec::new(),
+            TypeDef::Compact(_) | TypeDef::Primitive(_) => return Ok(Vec::new()),
+            TypeDef::Composite(c) if c.fields.is_empty() => return Ok(Vec::new()),
+            TypeDef::Variant(v) if v.variants.is_empty() => return Ok(Vec::new()),
+            TypeDef::Tuple(t) if t.fields.is_empty() => return Ok(Vec::new()),
             TypeDef::Variant(v) => {
                 let mut variants = v.variants.clone();
                 variants.sort_by_key(|v| v.index);
 
                 return variants
                     .iter()
-                    .map(|v| types::Type {
-                        path: path.clone(),
-                        type_def: types::TypeDef::Enumeration(v.as_basic_type(context)),
-                        type_id: 0u32.into(),
+                    .map(|v| {
+                        Ok(types::Type {
+                            path: path.clone(),
+                            type_def: types::TypeDef::Enumeration(v.as_basic_type(context)?),
+                            type_id: 0u32.into(),
+                        })
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<Result<Vec<_>, _>>();
             }
-            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type(context)),
+            TypeDef::Array(a) => types::TypeDef::Array(a.as_basic_type(context)?),
             TypeDef::Composite(c) => types::TypeDef::Composite(
-                c.fields.iter().map(|f| f.as_basic_type(context)).collect(),
+                c.fields
+                    .iter()
+                    .map(|f| f.as_basic_type(context))
+                    .collect::<Result<_, _>>()?,
             ),
             TypeDef::Sequence(s) => {
-                types::TypeDef::Sequence(s.type_param.as_basic_type_ref(context))
+                types::TypeDef::Sequence(s.type_param.as_basic_type_ref(context)?)
             }
             TypeDef::Tuple(t) => types::TypeDef::Tuple(
                 t.fields
                     .iter()
                     .map(|t| t.as_basic_type_ref(context))
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             ),
-            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type(context)),
+            TypeDef::BitSequence(b) => types::TypeDef::BitSequence(b.as_basic_type(context)?),
         };
 
-        vec![types::Type {
+        Ok(vec![types::Type {
             path,
             type_def,
             type_id: 0u32.into(),
-        }]
+        }])
     }
 }
 
@@ -318,54 +332,54 @@ impl IsBasicType for Type<PortableForm> {
 impl AsBasicType for Field<PortableForm> {
     type BasicType = types::Field;
 
-    fn as_basic_type(&self, context: TypeContext) -> Self::BasicType {
-        types::Field {
+    fn as_basic_type(&self, context: TypeContext) -> Result<Self::BasicType, String> {
+        Ok(types::Field {
             name: self
                 .name
                 .as_ref()
                 .map(|n| AsRef::<str>::as_ref(n).to_string()),
-            ty: self.ty.as_basic_type_ref(context),
+            ty: self.ty.as_basic_type_ref(context)?,
             type_name: self
                 .type_name
                 .as_ref()
                 .map(|n| AsRef::<str>::as_ref(n).to_string()),
-        }
+        })
     }
 }
 
 impl AsBasicType for Variant<PortableForm> {
     type BasicType = types::EnumerationVariant;
 
-    fn as_basic_type(&self, context: TypeContext) -> types::EnumerationVariant {
-        types::EnumerationVariant {
+    fn as_basic_type(&self, context: TypeContext) -> Result<types::EnumerationVariant, String> {
+        Ok(types::EnumerationVariant {
             name: AsRef::<str>::as_ref(&self.name).to_string(),
             fields: self
                 .fields
                 .iter()
                 .map(|f| f.as_basic_type(context))
-                .collect(),
+                .collect::<Result<_, _>>()?,
             index: (self.index as u32).into(),
-        }
+        })
     }
 }
 
 impl AsBasicType for TypeDefArray<PortableForm> {
     type BasicType = types::TypeDefArray;
 
-    fn as_basic_type(&self, context: TypeContext) -> types::TypeDefArray {
-        types::TypeDefArray {
+    fn as_basic_type(&self, context: TypeContext) -> Result<types::TypeDefArray, String> {
+        Ok(types::TypeDefArray {
             len: self.len,
-            type_param: self.type_param.as_basic_type_ref(context),
-        }
+            type_param: self.type_param.as_basic_type_ref(context)?,
+        })
     }
 }
 
 impl AsBasicType for TypeDefBitSequence<PortableForm> {
     type BasicType = types::TypeDefBitSequence;
 
-    fn as_basic_type(&self, context: TypeContext) -> types::TypeDefBitSequence {
+    fn as_basic_type(&self, context: TypeContext) -> Result<types::TypeDefBitSequence, String> {
         let mut collector = CollectPrimitives::default();
-        collector.visit_type(context, context.get_type(self.bit_store_type.id));
+        collector.visit_type(context, context.get_type(self.bit_store_type.id)?)?;
 
         let num_bytes = if collector.found.len() == 1 {
             match &collector.found[0] {
@@ -374,24 +388,26 @@ impl AsBasicType for TypeDefBitSequence<PortableForm> {
                 TypeDefPrimitive::U32 => 4,
                 TypeDefPrimitive::U64 => 8,
                 p => {
-                    panic!("Invalid primitive type {p:?} as store type for `BitSequence`: {self:?}")
+                    return Err(format!(
+                        "Invalid primitive type {p:?} as store type for `BitSequence`: {self:?}"
+                    ))
                 }
             }
         } else {
-            panic!("Only expected to find `1` primitive type as store type for `BitSequence`: {self:?}")
+            return Err(format!("Only expected to find `1` primitive type as store type for `BitSequence`: {self:?}"));
         };
 
-        types::TypeDefBitSequence {
+        Ok(types::TypeDefBitSequence {
             num_bytes,
             least_significant_bit_first: *context
-                .get_type(self.bit_order_type.id)
+                .get_type(self.bit_order_type.id)?
                 .path
                 .segments
                 .iter()
                 .find(|p| **p == "Lsb0" || **p == "Msb0")
                 .expect("`bit_order_type` is either `Lsb0` or `Msb0`")
                 == "Lsb0",
-        }
+        })
     }
 }
 
@@ -412,11 +428,15 @@ impl Visitor for CollectPrimitives {
 }
 
 trait Visitor {
-    fn visit_type_def(&mut self, context: TypeContext, type_def: &TypeDef<PortableForm>) {
+    fn visit_type_def(
+        &mut self,
+        context: TypeContext,
+        type_def: &TypeDef<PortableForm>,
+    ) -> Result<(), String> {
         visit_type_def(self, context, type_def)
     }
 
-    fn visit_type(&mut self, context: TypeContext, ty: &Type<PortableForm>) {
+    fn visit_type(&mut self, context: TypeContext, ty: &Type<PortableForm>) -> Result<(), String> {
         visit_type(self, context, ty)
     }
 
@@ -425,91 +445,106 @@ trait Visitor {
     fn already_visited(&mut self, id: u32) -> bool;
 }
 
-fn visit_type<V: Visitor + ?Sized>(visitor: &mut V, context: TypeContext, ty: &Type<PortableForm>) {
-    visitor.visit_type_def(context, &ty.type_def);
+fn visit_type<V: Visitor + ?Sized>(
+    visitor: &mut V,
+    context: TypeContext,
+    ty: &Type<PortableForm>,
+) -> Result<(), String> {
+    visitor.visit_type_def(context, &ty.type_def)
 }
 
 fn visit_type_def<V: Visitor + ?Sized>(
     visitor: &mut V,
     context: TypeContext,
     type_def: &TypeDef<PortableForm>,
-) {
+) -> Result<(), String> {
     match type_def {
         TypeDef::Variant(v) => {
-            v.variants.iter().for_each(|v| {
+            v.variants.iter().try_for_each(|v| {
                 for f in &v.fields {
                     if !visitor.already_visited(f.ty.id) {
-                        visitor.visit_type(context, context.get_type(f.ty.id))
+                        visitor.visit_type(context, context.get_type(f.ty.id)?)?
                     }
                 }
-            });
+
+                Ok::<_, String>(())
+            })?;
         }
         TypeDef::Array(a) => {
             if !visitor.already_visited(a.type_param.id) {
-                visitor.visit_type(context, context.get_type(a.type_param.id))
+                visitor.visit_type(context, context.get_type(a.type_param.id)?)?
             }
         }
         TypeDef::Composite(c) => {
-            c.fields.iter().for_each(|f| {
+            c.fields.iter().try_for_each(|f| {
                 if !visitor.already_visited(f.ty.id) {
-                    visitor.visit_type(context, context.get_type(f.ty.id))
+                    visitor.visit_type(context, context.get_type(f.ty.id)?)?
                 }
-            });
+
+                Ok::<_, String>(())
+            })?;
         }
         TypeDef::Sequence(s) => {
             if !visitor.already_visited(s.type_param.id) {
-                visitor.visit_type(context, context.get_type(s.type_param.id))
+                visitor.visit_type(context, context.get_type(s.type_param.id)?)?
             }
         }
-        TypeDef::Tuple(t) => t.fields.iter().for_each(|t| {
+        TypeDef::Tuple(t) => t.fields.iter().try_for_each(|t| {
             if !visitor.already_visited(t.id) {
-                visitor.visit_type(context, context.get_type(t.id))
+                visitor.visit_type(context, context.get_type(t.id)?)?
             }
-        }),
+
+            Ok::<_, String>(())
+        })?,
         TypeDef::Compact(c) => {
             if !visitor.already_visited(c.type_param.id) {
-                visitor.visit_type(context, context.get_type(c.type_param.id))
+                visitor.visit_type(context, context.get_type(c.type_param.id)?)?
             }
         }
         TypeDef::Primitive(p) => visitor.visit_primitive(p),
         TypeDef::BitSequence(b) => {
             if !visitor.already_visited(b.bit_order_type.id) {
-                visitor.visit_type(context, context.get_type(b.bit_order_type.id))
+                visitor.visit_type(context, context.get_type(b.bit_order_type.id)?)?
             }
 
             if !visitor.already_visited(b.bit_store_type.id) {
-                visitor.visit_type(context, context.get_type(b.bit_store_type.id))
+                visitor.visit_type(context, context.get_type(b.bit_store_type.id)?)?
             }
         }
     }
+
+    Ok(())
 }
 
 impl AsBasicType for frame_metadata::v15::ExtrinsicMetadata<PortableForm> {
     type BasicType = types::ExtrinsicMetadata;
 
-    fn as_basic_type(&self, context: TypeContext) -> types::ExtrinsicMetadata {
-        types::ExtrinsicMetadata {
+    fn as_basic_type(&self, context: TypeContext) -> Result<types::ExtrinsicMetadata, String> {
+        Ok(types::ExtrinsicMetadata {
             version: self.version,
-            address_ty: self.address_ty.as_basic_type_ref(context),
-            call_ty: self.call_ty.as_basic_type_ref(context),
-            signature_ty: self.signature_ty.as_basic_type_ref(context),
+            address_ty: self.address_ty.as_basic_type_ref(context)?,
+            call_ty: self.call_ty.as_basic_type_ref(context)?,
+            signature_ty: self.signature_ty.as_basic_type_ref(context)?,
             signed_extensions: self
                 .signed_extensions
                 .iter()
                 .map(|se| se.as_basic_type(context))
-                .collect(),
-        }
+                .collect::<Result<_, _>>()?,
+        })
     }
 }
 
 impl AsBasicType for SignedExtensionMetadata<PortableForm> {
     type BasicType = types::SignedExtensionMetadata;
 
-    fn as_basic_type(&self, context: TypeContext) -> types::SignedExtensionMetadata {
-        types::SignedExtensionMetadata {
+    fn as_basic_type(
+        &self,
+        context: TypeContext,
+    ) -> Result<types::SignedExtensionMetadata, String> {
+        Ok(types::SignedExtensionMetadata {
             identifier: AsRef::<str>::as_ref(&self.identifier).to_string(),
-            included_in_extrinsic: self.ty.as_basic_type_ref(context),
-            included_in_signed_data: self.additional_signed.as_basic_type_ref(context),
-        }
+            included_in_extrinsic: self.ty.as_basic_type_ref(context)?,
+            included_in_signed_data: self.additional_signed.as_basic_type_ref(context)?,
+        })
     }
 }

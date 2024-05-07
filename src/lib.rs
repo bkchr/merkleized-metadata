@@ -33,7 +33,7 @@ pub fn generate_metadata_digest(
 ) -> Result<MetadataDigest, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
 
-    let type_information = prepared.as_type_information();
+    let type_information = prepared.as_type_information()?;
 
     let tree_root = MerkleTree::new(type_information.types.into_iter()).root();
 
@@ -62,7 +62,7 @@ pub fn generate_proof_for_extrinsic(
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
-    let type_information = prepared.as_type_information();
+    let type_information = prepared.as_type_information()?;
 
     let extrinsic = &mut extrinsic;
 
@@ -77,7 +77,7 @@ pub fn generate_proof_for_extrinsic(
         return Err("Bytes left in `extrinsic` after decoding".into());
     }
 
-    MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
+    MerkleTree::new(type_information.types).build_proof(accessed_types)
 }
 
 pub fn verify_proof(
@@ -87,7 +87,7 @@ pub fn verify_proof(
     proof: &Proof,
 ) -> Result<(), String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
-    let type_information = prepared.as_type_information();
+    let type_information = prepared.as_type_information()?;
 
     decode_extrinsic_and_collect_type_ids(
         &mut extrinsic,
@@ -113,7 +113,7 @@ pub fn generate_proof_for_extrinsic_parts(
     metadata: &RuntimeMetadata,
 ) -> Result<Proof, String> {
     let prepared = FrameMetadataPrepared::prepare(metadata)?;
-    let type_information = prepared.as_type_information();
+    let type_information = prepared.as_type_information()?;
 
     let call = &mut call;
 
@@ -128,7 +128,7 @@ pub fn generate_proof_for_extrinsic_parts(
         return Err("Bytes left in `call` after decoding".into());
     }
 
-    MerkleTree::new(prepared.as_type_information().types).build_proof(accessed_types)
+    MerkleTree::new(type_information.types).build_proof(accessed_types)
 }
 
 #[cfg(test)]
@@ -198,7 +198,7 @@ mod tests {
 
             let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
 
-            let type_information = prepared.as_type_information();
+            let type_information = prepared.as_type_information().unwrap();
             type_information
                 .types
                 .values()
