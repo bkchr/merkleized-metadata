@@ -405,7 +405,7 @@ impl AsBasicType for TypeDefBitSequence<PortableForm> {
                 .segments
                 .iter()
                 .find(|p| **p == "Lsb0" || **p == "Msb0")
-                .expect("`bit_order_type` is either `Lsb0` or `Msb0`")
+                .ok_or("`bit_order_type` should be either `Lsb0` or `Msb0`")?
                 == "Lsb0",
         })
     }
