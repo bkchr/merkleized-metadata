@@ -80,6 +80,9 @@ pub fn generate_proof_for_extrinsic(
     MerkleTree::new(type_information.types).build_proof(accessed_types)
 }
 
+/// Verify that the given `proof` can be used to decode the `extrinsic`.
+///
+/// This is mainly useful for tests/fuzzing.
 pub fn verify_proof(
     mut extrinsic: &[u8],
     additional_signed: Option<&[u8]>,
@@ -94,9 +97,8 @@ pub fn verify_proof(
         additional_signed,
         &type_information,
         proof.leaves.iter(),
-    )?;
-
-    Ok(())
+    )
+    .map(drop)
 }
 
 /// Data that is required for a signed extrinsic.
