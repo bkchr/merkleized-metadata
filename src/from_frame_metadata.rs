@@ -1,5 +1,6 @@
 use alloc::{
     collections::{BTreeMap, BTreeSet},
+    format,
     string::{String, ToString},
     vec,
     vec::Vec,
