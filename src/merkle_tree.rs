@@ -123,13 +123,37 @@ impl NodeIndex {
 }
 
 /// A proof containing all the nodes to decode a specific extrinsic.
+///
+///
+/// # Example:
+///
+/// ```
+///      0
+///    /   \
+///   1     2
+///  / \   / \
+/// 3   4 5   6
+/// ```
+///
+/// Let's assume we want to have a proof for `4` and `6`:
+///
+/// - `leaves`: `[u32, u16]`
+/// - `leaf_indices`: `[4, 6]`
+/// - `nodes`: `[hashOf(3), hashOf(5)]`
 #[derive(Clone, Debug, PartialEq, Eq, Encode)]
 pub struct Proof {
 	/// The leaves of the tree.
+	///
+	/// They are sorted that the left most leaves are first.
 	pub leaves: Vec<Type>,
 	/// The indices of the leaves in the tree, in the same order as `leaves`.
 	pub leaf_indices: Vec<u32>,
 	/// All the node hashes that can not be calculated out of the `leaves`.
+	///
+	/// These are all the nodes that are required to proof that all the `leaves` are part of the
+	/// same merkle tree.
+	///
+	/// They are sorted from left to right, from the root to the leaf.
 	pub nodes: Vec<Hash>,
 }
 

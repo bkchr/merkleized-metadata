@@ -106,7 +106,7 @@ pub fn generate_proof_for_extrinsic(
 	MerkleTree::new(type_information.types).build_proof(accessed_types)
 }
 
-/// Verify that the given `proof` can be used to decode the `extrinsic`.
+/// Verify that the given `proof` can be used to decode the given `extrinsic`.
 ///
 /// This is mainly useful for tests/fuzzing.
 pub fn verify_proof(
