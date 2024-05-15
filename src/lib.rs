@@ -1,3 +1,22 @@
+//! # Merkleized metadata
+//!
+//! This crate provides the merkleization of [`frame_metadata`] as described in
+//! [RFC78](https://polkadot-fellows.github.io/RFCs/approved/0078-merkleized-metadata.html).
+//!
+//! It exports the following main functions:
+//!
+//! - [`generate_metadata_digest`]: This generates the [`MetadataDigest`] for the given `metadata`.
+//!                                 The hash of this digest is what is called the "metadata hash" in the RFC.
+//!
+//! - [`generate_proof_for_extrinsic`]: This generates a proof that contains all
+//!                                     the types required for decoding the given `extrinsic`.
+//!
+//! - [`generate_proof_for_extrinsic_parts`]: Similar to the previous one, but doesn't
+//!                                           require the full extrinsic to be passed. However, this
+//!                                           may increases the proof size, see the documentation of the function for more information.
+//!
+//! These functions are the main entry point providing all the functionality expected from this crate. The crate itself is by default `no_std` compatible.
+
 #![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
@@ -20,10 +39,15 @@ pub mod types;
 /// Extra information that is required to generate the [`MetadataDigest`].
 #[derive(Debug, Clone)]
 pub struct ExtraInfo {
+    /// The spec version of the runtime.
     pub spec_version: u32,
+    /// The spec name of the runtime.
     pub spec_name: String,
+    /// The base58 prefix for addresses.
     pub base58_prefix: u16,
+    /// The number of decimals of the primary token.
     pub decimals: u8,
+    /// The token symbol of the primary token.
     pub token_symbol: String,
 }
 
