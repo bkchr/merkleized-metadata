@@ -8,13 +8,14 @@ use extrinsic_decoder::{
 };
 use frame_metadata::RuntimeMetadata;
 use from_frame_metadata::FrameMetadataPrepared;
-use merkle_tree::{MerkleTree, Proof};
+use merkle_tree::MerkleTree;
+pub use merkle_tree::Proof;
 use types::MetadataDigest;
 
 mod extrinsic_decoder;
 mod from_frame_metadata;
 mod merkle_tree;
-mod types;
+pub mod types;
 
 /// Extra information that is required to generate the [`MetadataDigest`].
 #[derive(Debug, Clone)]

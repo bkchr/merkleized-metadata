@@ -129,11 +129,18 @@ impl NodeIndex {
 /// A proof containing all the nodes to decode a specific extrinsic.
 #[derive(Clone, Debug, PartialEq, Eq, Encode)]
 pub struct Proof {
+    /// The leaves of the tree.
     pub leaves: Vec<Type>,
+    /// The indices of the leaves in the tree, in the same order as `leaves`.
     pub leaf_indices: Vec<u32>,
+    /// All the node hashes that can not be calculated out of the `leaves`.
     pub nodes: Vec<Hash>,
 }
 
+/// Merkle tree used to calculate the root hash of the metadata.
+///
+/// The internal representation is a complete binary tree with all the
+/// leaves being the type ids.
 pub struct MerkleTree {
     root_hash: Hash,
     nodes: BTreeMap<Hash, MerkleTreeNode>,
@@ -267,6 +274,12 @@ impl MerkleTree {
         })
     }
 
+    /// Collect all the node hashes required to access the leaves.
+    ///
+    /// All node hashes that can be caculated by using the leaves, are not added to the list of node hashes.
+    /// The node hashes are ordered from left to right per level. The function starts at
+    /// `leaf_node_index` and goes up to `stop_at_parent`. For `stop_at_parent`
+    /// both childs are processed and then the function.
     fn collect_node_hashes<'a, I: Iterator<Item = &'a NodeIndex>>(
         &self,
         stop_at_parent: NodeIndex,
@@ -276,7 +289,7 @@ impl MerkleTree {
     ) -> Result<(), String> {
         let mut node_index = leaf_node_index;
         // The position where to insert nodes left in the tree.
-        let node_hashes_pos = node_hashes.len();
+        let left_most_hash_pos = node_hashes.len();
 
         loop {
             let parent = node_index.parent();
@@ -313,7 +326,8 @@ impl MerkleTree {
                     format!("Could not find hash for left child `{left_child:?}`.")
                 })?;
 
-                node_hashes.insert(node_hashes_pos, *hash);
+                // The left node should go to the left most position.
+                node_hashes.insert(left_most_hash_pos, *hash);
             }
 
             if parent == stop_at_parent {

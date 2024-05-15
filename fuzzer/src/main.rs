@@ -1,8 +1,12 @@
 use clap::{Parser, ValueEnum};
-use codec::Decode;
+use codec::{Decode, Encode};
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use honggfuzz::fuzz;
-use merkleized_metadata::{generate_proof_for_extrinsic, verify_proof};
+use merkleized_metadata::{
+    generate_metadata_digest, generate_proof_for_extrinsic,
+    types::{Hash, MetadataDigest, Type},
+    verify_proof, ExtraInfo, Proof,
+};
 use std::fs;
 
 #[derive(ValueEnum, Clone, Copy)]
@@ -89,5 +93,107 @@ fn generate_proof_and_verify(
 
     println!("Generated valid extrinsic");
 
-    verify_proof(extrinsic, additional_signed.as_deref(), &metadata, &proof).unwrap()
+    verify_proof(extrinsic, additional_signed.as_deref(), &metadata, &proof).unwrap();
+
+    let proof_root = proof_root_hash(&proof);
+
+    let metadata_root = match generate_metadata_digest(
+        &metadata,
+        ExtraInfo {
+            spec_version: 1,
+            spec_name: "fuzz".into(),
+            base58_prefix: 42,
+            decimals: 10,
+            token_symbol: "fuzz".into(),
+        },
+    )
+    .unwrap()
+    {
+        MetadataDigest::V1 {
+            types_tree_root, ..
+        } => types_tree_root,
+        _ => panic!("Invalid digest"),
+    };
+
+    assert_eq!(metadata_root, proof_root);
+}
+
+/// Calculates the root hash of the given `proof`.
+fn proof_root_hash(proof: &Proof) -> Hash {
+    fn is_descendent(l: u32, r: u32) -> bool {
+        // If the index is `0`, it is the root
+        if l == 0 {
+            return true;
+        }
+
+        // If the index is greater, it can not be a descendent
+        if l > r {
+            return false;
+        }
+
+        fn level(l: u32) -> u32 {
+            (l + 1).ilog2() as _
+        }
+
+        let level0 = level(l);
+        let level1 = level(r);
+
+        // Check if applying X times the parent function leads to
+        // the expected `index`. X is the level difference
+        l + 1 == (r + 1) >> (level1 - level0)
+    }
+
+    //// Return the index of the right child.
+    fn right_child(n: u32) -> u32 {
+        n * 2 + 2
+    }
+
+    //// Return the index of the left child.
+    fn left_child(n: u32) -> u32 {
+        n * 2 + 1
+    }
+
+    fn get_hash(
+        leaf_indices: &mut &[u32],
+        leaves: &mut &[Type],
+        nodes: &mut &[Hash],
+        node_index: u32,
+    ) -> Hash {
+        let is_descendent = if leaf_indices.is_empty() {
+            false
+        } else {
+            let current_leaf = leaf_indices[0];
+
+            if node_index == current_leaf {
+                let hash = blake3::hash(&leaves[0].encode());
+
+                *leaves = &leaves[1..];
+                *leaf_indices = &leaf_indices[1..];
+                return hash.into();
+            }
+
+            is_descendent(node_index, current_leaf)
+        };
+
+        if !is_descendent {
+            let res = nodes[0];
+            *nodes = &nodes[1..];
+            return res;
+        }
+
+        let left_child = left_child(node_index);
+        let left = get_hash(leaf_indices, leaves, nodes, left_child);
+
+        let right_child = right_child(node_index);
+        let right = get_hash(leaf_indices, leaves, nodes, right_child);
+
+        blake3::hash(&(left, right).encode()).into()
+    }
+
+    get_hash(
+        &mut &proof.leaf_indices[..],
+        &mut &proof.leaves[..],
+        &mut &proof.nodes[..],
+        0,
+    )
 }

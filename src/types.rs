@@ -63,6 +63,7 @@ impl TypeRef {
     }
 }
 
+/// The hash type.
 pub type Hash = [u8; 32];
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
@@ -165,6 +166,9 @@ pub struct SignedExtensionMetadata {
     pub included_in_signed_data: TypeRef,
 }
 
+/// The metadata digest.
+///
+/// The hash of this digest is the "metadata hash".
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Encode)]
 pub enum MetadataDigest {
     Disabled,
@@ -180,6 +184,7 @@ pub enum MetadataDigest {
 }
 
 impl MetadataDigest {
+    /// Returns the hash of this digest.
     pub fn hash(&self) -> Hash {
         blake3::hash(&self.encode()).into()
     }
