@@ -10,3 +10,6 @@ codec = { package = "parity-scale-codec", version = "3.6.9", features = [ "deriv
 frame-metadata = { version = "16.0.0", features = [ "current" ], default-features = false }
 scale-decode = { version = "0.13.0", default-features = false }
 scale-info = { version = "2.10.0", default-features = false }
+
+[dev-dependencies]
+frame-metadata = { version = "16.0.0", features = [ "current", "decode" ], default-features = false }
