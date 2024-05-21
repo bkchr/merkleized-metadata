@@ -127,7 +127,7 @@ impl NodeIndex {
 ///
 /// # Example:
 ///
-/// ```
+/// ```ignore
 ///      0
 ///    /   \
 ///   1     2
