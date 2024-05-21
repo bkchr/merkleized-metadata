@@ -41,3 +41,4 @@ jobs:
       - name: Test
         run: cargo test --all --release -q
         env:
+          RUSTFLAGS: "-C debug-assertions -D warnings"
