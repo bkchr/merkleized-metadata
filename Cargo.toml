@@ -8,7 +8,7 @@ repository = "https://github.com/bkchr/merkleized-metadata"
 keywords = ["FRAME", "metadata", "polkadot"]
 license = "MIT OR Apache-2.0"
 description = """
-FRAME metadata merkleiziation
+FRAME metadata merkleization
 """
 readme = "./README.md"
 
