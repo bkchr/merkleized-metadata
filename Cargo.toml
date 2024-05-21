@@ -2,6 +2,15 @@
 name = "merkleized-metadata"
 version = "0.1.0"
 edition = "2021"
+authors = ["Bastian Köcher <git@kchr.de>"]
+documentation = "https://docs.rs/merkleized-metadata"
+repository = "https://github.com/bkchr/merkleized-metadata"
+keywords = ["FRAME", "metadata", "polkadot"]
+license = "MIT OR Apache-2.0"
+description = """
+FRAME metadata merkleiziation
+"""
+readme = "./README.md"
 
 [dependencies]
 array-bytes = { version = "6.2.2", default-features = false }
