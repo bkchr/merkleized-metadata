@@ -79,12 +79,11 @@ impl FrameMetadataPrepared {
 		let frame_id_to_id = self
 			.accessible_types
 			.iter()
-			.filter_map(|id| {
-				self.get_type(*id).is_basic_type().then(|| {
-					let new_id = next_id;
-					next_id += 1;
-					(*id, new_id)
-				})
+			.filter(|&id| self.get_type(*id).is_basic_type())
+			.map(|id| {
+				let new_id = next_id;
+				next_id += 1;
+				(*id, new_id)
 			})
 			.collect::<BTreeMap<u32, u32>>();
 

@@ -175,7 +175,7 @@ impl CollectAccessedTypes {
 							.fields
 							.iter()
 							.for_each(|f| self.collect_all_types(&f.ty, type_information)),
-						TypeDef::Sequence(s) => self.collect_all_types(&s, type_information),
+						TypeDef::Sequence(s) => self.collect_all_types(s, type_information),
 						TypeDef::Tuple(t) =>
 							t.iter().for_each(|t| self.collect_all_types(t, type_information)),
 						TypeDef::BitSequence(_) => {},
@@ -247,11 +247,11 @@ impl Visitor for CollectAccessedTypes {
 		Ok(self)
 	}
 
-	fn visit_u256<'scale, 'resolver>(
+	fn visit_u256<'resolver>(
 		self,
-		_value: &'scale [u8; 32],
+		_value: &[u8; 32],
 		_type_id: TypeRef,
-	) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+	) -> Result<Self::Value<'_, 'resolver>, Self::Error> {
 		Ok(self)
 	}
 
@@ -295,11 +295,11 @@ impl Visitor for CollectAccessedTypes {
 		Ok(self)
 	}
 
-	fn visit_i256<'scale, 'resolver>(
+	fn visit_i256<'resolver>(
 		self,
-		_value: &'scale [u8; 32],
+		_value: &[u8; 32],
 		_type_id: TypeRef,
-	) -> Result<Self::Value<'scale, 'resolver>, Self::Error> {
+	) -> Result<Self::Value<'_, 'resolver>, Self::Error> {
 		Ok(self)
 	}
 
@@ -312,7 +312,7 @@ impl Visitor for CollectAccessedTypes {
 			.insert(TypeId::Other(type_id.id().expect("Sequence is always referenced by id; qed")));
 
 		let mut visitor = self;
-		while let Some(field) = value.next() {
+		for field in value.by_ref() {
 			visitor = field?.decode_with_visitor(visitor)?;
 		}
 
@@ -334,7 +334,7 @@ impl Visitor for CollectAccessedTypes {
 		));
 
 		let mut visitor = self;
-		while let Some(field) = value.next() {
+		for field in value.by_ref() {
 			visitor = field?.decode_with_visitor(visitor)?;
 		}
 
@@ -350,7 +350,7 @@ impl Visitor for CollectAccessedTypes {
 			.insert(TypeId::Other(type_id.id().expect("Tuple is always referenced by id; qed")));
 
 		let mut visitor = self;
-		while let Some(field) = value.next() {
+		for field in value.by_ref() {
 			visitor = field?.decode_with_visitor(visitor)?;
 		}
 
@@ -393,7 +393,7 @@ impl Visitor for CollectAccessedTypes {
 		));
 
 		let mut visitor = self;
-		while let Some(field) = value.next() {
+		for field in value.by_ref() {
 			visitor = field?.decode_with_visitor(visitor)?;
 		}
 
