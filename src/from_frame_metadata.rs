@@ -224,6 +224,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
 						scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
 						scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
 						scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
+						scale_info::TypeDefPrimitive::U256 => types::TypeRef::CompactU256,
 						p => return Err(format!("Unsupported primitive type for `Compact`: {p:?}")),
 					}
 				} else {
