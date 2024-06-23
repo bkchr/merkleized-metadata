@@ -79,12 +79,11 @@ impl FrameMetadataPrepared {
 		let frame_id_to_id = self
 			.accessible_types
 			.iter()
-			.filter_map(|id| {
-				self.get_type(*id).is_basic_type().then(|| {
-					let new_id = next_id;
-					next_id += 1;
-					(*id, new_id)
-				})
+			.filter(|&id| self.get_type(*id).is_basic_type())
+			.map(|id| {
+				let new_id = next_id;
+				next_id += 1;
+				(*id, new_id)
 			})
 			.collect::<BTreeMap<u32, u32>>();
 
@@ -225,6 +224,7 @@ impl<T> AsBasicTypeRef for UntrackedSymbol<T> {
 						scale_info::TypeDefPrimitive::U32 => types::TypeRef::CompactU32,
 						scale_info::TypeDefPrimitive::U64 => types::TypeRef::CompactU64,
 						scale_info::TypeDefPrimitive::U128 => types::TypeRef::CompactU128,
+						scale_info::TypeDefPrimitive::U256 => types::TypeRef::CompactU256,
 						p => return Err(format!("Unsupported primitive type for `Compact`: {p:?}")),
 					}
 				} else {

@@ -61,7 +61,7 @@ pub fn generate_metadata_digest(
 
 	let type_information = prepared.as_type_information()?;
 
-	let tree_root = MerkleTree::new(type_information.types.into_iter()).root();
+	let tree_root = MerkleTree::new(type_information.types).root();
 
 	Ok(MetadataDigest::V1 {
 		types_tree_root: tree_root,
@@ -228,7 +228,7 @@ mod tests {
 			let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
 
 			let digest = generate_metadata_digest(&metadata, extra_info.clone()).unwrap();
-			assert_eq!(*expected_hash, array_bytes::bytes2hex("0x", &digest.hash()));
+			assert_eq!(*expected_hash, array_bytes::bytes2hex("0x", digest.hash()));
 
 			let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
 
