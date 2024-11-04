@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 honggfuzz = { git = "https://github.com/rust-fuzz/honggfuzz-rs.git" }
 merkleized-metadata = { path = ".." }
-frame-metadata = { version = "16.0.0", features = [ "current" ] }
+frame-metadata = { version = "17.0.0", features = [ "current" ] }
 codec = { package = "parity-scale-codec", version = "3.6.9", features = [ "derive" ] }
 array-bytes = "6.2.2"
 clap = { version = "4.5.4", features = [ "derive" ] }
