@@ -1,6 +1,6 @@
 [package]
 name = "merkleized-metadata"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Bastian Köcher <git@kchr.de>"]
 documentation = "https://docs.rs/merkleized-metadata"
