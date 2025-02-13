@@ -1,6 +1,6 @@
 [package]
 name = "merkleized-metadata"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Bastian Köcher <git@kchr.de>"]
 documentation = "https://docs.rs/merkleized-metadata"
@@ -16,9 +16,9 @@ readme = "./README.md"
 array-bytes = { version = "6.2.2", default-features = false }
 blake3 = { version = "1.5.0", default-features = false }
 codec = { package = "parity-scale-codec", version = "3.6.9", features = [ "derive" ], default-features = false }
-frame-metadata = { version = "18.0.0", features = [ "current" ], default-features = false }
+frame-metadata = { version = "19.0.0", features = [ "current" ], default-features = false }
 scale-decode = { version = "0.13.0", default-features = false }
 scale-info = { version = "2.10.0", default-features = false }
 
 [dev-dependencies]
-frame-metadata = { version = "18.0.0", features = [ "current", "decode" ], default-features = false }
+frame-metadata = { version = "19.0.0", features = [ "current", "decode" ], default-features = false }
