@@ -21,4 +21,4 @@ scale-decode = { version = "0.13.0", default-features = false }
 scale-info = { version = "2.10.0", default-features = false }
 
 [dev-dependencies]
-frame-metadata = { version = "18.0.0", features = [ "current", "decode" ], default-features = false }
+frame-metadata = { version = "19.0.0", features = [ "current", "decode" ], default-features = false }
