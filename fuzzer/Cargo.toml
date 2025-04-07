@@ -7,10 +7,10 @@ publish = false
 [dependencies]
 honggfuzz = { git = "https://github.com/rust-fuzz/honggfuzz-rs.git" }
 merkleized-metadata = { path = ".." }
-frame-metadata = { version = "18.0.0", features = [ "current" ] }
-codec = { package = "parity-scale-codec", version = "3.6.9", features = [ "derive" ] }
-array-bytes = "6.2.2"
-clap = { version = "4.5.4", features = [ "derive" ] }
-blake3 = { version = "1.5.0", default-features = false }
+frame-metadata = { version = "*", features = [ "current" ] }
+codec = { package = "parity-scale-codec", version = "3.7.4", features = [ "derive" ] }
+array-bytes = "9.1.2"
+clap = { version = "4.5.35", features = [ "derive" ] }
+blake3 = { version = "1.8.1", default-features = false }
 
 [workspace]

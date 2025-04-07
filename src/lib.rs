@@ -171,6 +171,7 @@ pub fn generate_proof_for_extrinsic_parts(
 mod tests {
 	use super::*;
 	use ::frame_metadata::RuntimeMetadataPrefixed;
+	use array_bytes::{Dehexify, Hexify};
 	use codec::Decode;
 	use std::fs;
 
@@ -220,7 +221,7 @@ mod tests {
 			.unwrap();
 
 			let metadata = Option::<Vec<u8>>::decode(
-				&mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+				&mut &Vec::<u8>::dehexify(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
 			)
 			.unwrap()
 			.unwrap();
@@ -228,7 +229,7 @@ mod tests {
 			let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
 
 			let digest = generate_metadata_digest(&metadata, extra_info.clone()).unwrap();
-			assert_eq!(*expected_hash, array_bytes::bytes2hex("0x", digest.hash()));
+			assert_eq!(*expected_hash, digest.hash().hexify_prefixed());
 
 			let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
 

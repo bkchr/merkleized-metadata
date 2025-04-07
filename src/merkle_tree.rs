@@ -5,6 +5,7 @@ use alloc::{
 	string::String,
 	vec::Vec,
 };
+use array_bytes::Hexify;
 use codec::{Compact, Encode};
 use core::{cmp::Ordering, fmt::Debug, iter::Peekable};
 
@@ -264,14 +265,14 @@ impl MerkleTree {
 					.get(node_index)
 					.ok_or_else(|| format!("Could not find hash for {node_index:?}"))?;
 				let node = self.nodes.get(hash).ok_or_else(|| {
-					format!("Could not find node for hash `{}`", array_bytes::bytes2hex("0x", hash))
+					format!("Could not find node for hash `{}`", hash.hexify_prefixed())
 				})?;
 
 				match node {
 					MerkleTreeNode::Leaf { ty, .. } => Ok(ty.clone()),
 					MerkleTreeNode::Node { .. } => Err(format!(
 						"Expected leaf, found node for hash `{}`",
-						array_bytes::bytes2hex("0x", hash)
+						hash.hexify_prefixed(),
 					)),
 				}
 			})
@@ -353,6 +354,7 @@ impl MerkleTree {
 mod tests {
 	use std::fs;
 
+	use array_bytes::Dehexify;
 	use codec::Decode;
 	use frame_metadata::RuntimeMetadataPrefixed;
 
@@ -484,7 +486,7 @@ mod tests {
 		.unwrap();
 
 		let metadata = Option::<Vec<u8>>::decode(
-			&mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+			&mut &Vec::<u8>::dehexify(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
 		)
 		.unwrap()
 		.unwrap();
@@ -492,21 +494,21 @@ mod tests {
 		let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
 
 		let proof = generate_proof_for_extrinsic(
-			&array_bytes::hex2bytes(TEST_EXT).unwrap(),
-			Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+			&Vec::<u8>::dehexify(TEST_EXT).unwrap(),
+			Some(&Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap()),
 			&metadata,
 		)
 		.unwrap();
 
 		let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
 		let type_information = prepared.as_type_information().unwrap();
-		let ext = array_bytes::hex2bytes(TEST_EXT).unwrap();
+		let ext = Vec::<u8>::dehexify(TEST_EXT).unwrap();
 		let ext_ptr = &mut &ext[..];
 
 		// Check that we have included all the required types in the proof.
 		let accessed_types = decode_extrinsic_and_collect_type_ids(
 			ext_ptr,
-			Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+			Some(&Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap()),
 			&type_information,
 			proof.leaves.iter(),
 		)
@@ -525,10 +527,7 @@ mod tests {
 			NodeIndex(0),
 			&merkle_tree,
 		);
-		assert_eq!(
-			array_bytes::bytes2hex("0x", merkle_tree.root()),
-			array_bytes::bytes2hex("0x", root_hash)
-		);
+		assert_eq!(merkle_tree.root().hexify_prefixed(), root_hash.hexify_prefixed(),);
 	}
 
 	#[test]
@@ -540,7 +539,7 @@ mod tests {
 		.unwrap();
 
 		let metadata = Option::<Vec<u8>>::decode(
-			&mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+			&mut &Vec::<u8>::dehexify(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
 		)
 		.unwrap()
 		.unwrap();
@@ -548,8 +547,8 @@ mod tests {
 		let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
 
 		let proof = generate_proof_for_extrinsic(
-			&array_bytes::hex2bytes(TEST_EXT).unwrap(),
-			Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+			&Vec::<u8>::dehexify(TEST_EXT).unwrap(),
+			Some(&Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap()),
 			&metadata,
 		)
 		.unwrap();
@@ -580,7 +579,7 @@ mod tests {
 		.unwrap();
 
 		let metadata = Option::<Vec<u8>>::decode(
-			&mut &array_bytes::hex2bytes(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+			&mut &Vec::<u8>::dehexify(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
 		)
 		.unwrap()
 		.unwrap();
@@ -588,12 +587,12 @@ mod tests {
 		let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
 
 		let signed_ext_data = SignedExtrinsicData {
-			included_in_signed_data: &array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap(),
-			included_in_extrinsic: &array_bytes::hex2bytes("0x07000000").unwrap(),
+			included_in_signed_data: &Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap(),
+			included_in_extrinsic: &Vec::<u8>::dehexify("0x07000000").unwrap(),
 		};
 
 		let proof = generate_proof_for_extrinsic_parts(
-			&array_bytes::hex2bytes(TEST_CALL).unwrap(),
+			&Vec::<u8>::dehexify(TEST_CALL).unwrap(),
 			Some(signed_ext_data),
 			&metadata,
 		)
@@ -604,8 +603,8 @@ mod tests {
 
 		// Decoding the extrinsic using this proof should work.
 		decode_extrinsic_and_collect_type_ids(
-			&mut &array_bytes::hex2bytes(TEST_EXT).unwrap()[..],
-			Some(&array_bytes::hex2bytes(TEST_ADDITIONAL_SIGNED).unwrap()),
+			&mut &Vec::<u8>::dehexify(TEST_EXT).unwrap()[..],
+			Some(&Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap()),
 			&type_information,
 			proof.leaves.iter(),
 		)
@@ -620,9 +619,6 @@ mod tests {
 			NodeIndex(0),
 			&merkle_tree,
 		);
-		assert_eq!(
-			array_bytes::bytes2hex("0x", merkle_tree.root()),
-			array_bytes::bytes2hex("0x", root_hash)
-		);
+		assert_eq!(merkle_tree.root().hexify_prefixed(), root_hash.hexify_prefixed());
 	}
 }
