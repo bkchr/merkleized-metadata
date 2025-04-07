@@ -1,0 +1,12 @@
+# How to run the fuzzer
+
+```sh
+# Start a nix shell. If you are not using `nix`, install the required packages for `honggfuzz` manually.
+nix develop
+
+# Install honggfuzz
+cargo install honggfuzz
+
+# Run the fuzzer
+cargo hfuzz run fuzzer
+```
