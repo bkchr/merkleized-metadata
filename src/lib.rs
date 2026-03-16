@@ -30,7 +30,6 @@ use frame_metadata::RuntimeMetadata;
 use merkle_tree::MerkleTree;
 pub use merkle_tree::Proof;
 use types::MetadataDigest;
-
 pub use from_frame_metadata::{FrameMetadataPrepared, TypeInformation};
 
 mod extrinsic_decoder;
