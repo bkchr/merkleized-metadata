@@ -22,9 +22,11 @@
 
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
+use codec::Encode;
 use extrinsic_decoder::{
 	decode_extrinsic_and_collect_type_ids, decode_extrinsic_parts_and_collect_type_ids,
+	decode_extrinsic_payload_and_collect_type_ids,
 };
 use frame_metadata::RuntimeMetadata;
 pub use from_frame_metadata::{FrameMetadataPrepared, TypeInformation};
@@ -38,7 +40,7 @@ mod merkle_tree;
 pub mod types;
 
 /// Extra information that is required to generate the [`MetadataDigest`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode)]
 pub struct ExtraInfo {
 	/// The spec version of the runtime.
 	pub spec_version: u32,
@@ -165,6 +167,50 @@ pub fn generate_proof_for_extrinsic_parts(
 	}
 
 	MerkleTree::new(type_information.types).build_proof(accessed_types)
+}
+
+/// Generate a full proof blob for the given extrinsic payload using the given `metadata`.
+///
+/// The payload is the `call` together with the signed extension data (`signed_ext_data`),
+/// i.e. exactly the data that is signed. In contrast to
+/// [`generate_proof_for_extrinsic_parts`], the proof only contains the types required to
+/// decode this payload (the `call` and the signed extensions) and does *not* include the
+/// `address` and `signature` types of the full extrinsic. This produces the minimal proof
+/// expected by offline signers.
+///
+/// The returned bytes are the complete, SCALE-encoded proof: the merkle [`Proof`] followed
+/// by the [`types::ExtrinsicMetadata`] and the given `extra_info`.
+pub fn generate_proof_for_extrinsic_payload(
+	mut call: &[u8],
+	signed_ext_data: Option<SignedExtrinsicData>,
+	metadata: &RuntimeMetadata,
+	extra_info: &ExtraInfo,
+) -> Result<Vec<u8>, String> {
+	let prepared = FrameMetadataPrepared::prepare(metadata)?;
+	let type_information = prepared.as_type_information()?;
+
+	let call = &mut call;
+
+	let accessed_types = decode_extrinsic_payload_and_collect_type_ids(
+		call,
+		signed_ext_data,
+		&type_information,
+		type_information.types.values(),
+	)?;
+
+	if !call.is_empty() {
+		return Err("Bytes left in `call` after decoding".into());
+	}
+
+	let TypeInformation { extrinsic_metadata, types } = type_information;
+
+	let proof = MerkleTree::new(types).build_proof(accessed_types)?;
+
+	let mut encoded = proof.encode();
+	extrinsic_metadata.encode_to(&mut encoded);
+	extra_info.encode_to(&mut encoded);
+
+	Ok(encoded)
 }
 
 #[cfg(test)]

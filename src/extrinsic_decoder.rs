@@ -501,6 +501,30 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
 	type_information: &TypeInformation,
 	types: impl Iterator<Item = &'a Type>,
 ) -> Result<Vec<TypeId>, String> {
+	decode_extrinsic_parts_inner(call, signed_ext_data, type_information, types, true)
+}
+
+/// Like [`decode_extrinsic_parts_and_collect_type_ids`], but only collects the types required
+/// to decode the *payload* (the `call` and the signed extensions). The `address` and
+/// `signature` types of the full extrinsic are *not* included.
+pub fn decode_extrinsic_payload_and_collect_type_ids<'a>(
+	call: &mut &[u8],
+	signed_ext_data: Option<SignedExtrinsicData>,
+	type_information: &TypeInformation,
+	types: impl Iterator<Item = &'a Type>,
+) -> Result<Vec<TypeId>, String> {
+	decode_extrinsic_parts_inner(call, signed_ext_data, type_information, types, false)
+}
+
+/// When `include_address_signature` is `true` the `address` and `signature` types are added to
+/// the collected types (full extrinsic); when `false` only the payload types are collected.
+fn decode_extrinsic_parts_inner<'a>(
+	call: &mut &[u8],
+	signed_ext_data: Option<SignedExtrinsicData>,
+	type_information: &TypeInformation,
+	types: impl Iterator<Item = &'a Type>,
+	include_address_signature: bool,
+) -> Result<Vec<TypeId>, String> {
 	let type_resolver = TypeResolver::new(types);
 
 	let visitor = CollectAccessedTypes::default();
@@ -515,14 +539,16 @@ pub fn decode_extrinsic_parts_and_collect_type_ids<'a>(
 
 	let visitor = signed_ext_data
 		.map(|mut signed_ext_data| {
-			visitor.collect_all_types(
-				&type_information.extrinsic_metadata.address_ty,
-				type_information,
-			);
-			visitor.collect_all_types(
-				&type_information.extrinsic_metadata.signature_ty,
-				type_information,
-			);
+			if include_address_signature {
+				visitor.collect_all_types(
+					&type_information.extrinsic_metadata.address_ty,
+					type_information,
+				);
+				visitor.collect_all_types(
+					&type_information.extrinsic_metadata.signature_ty,
+					type_information,
+				);
+			}
 
 			let included_in_extrinsic = &mut signed_ext_data.included_in_extrinsic;
 			let included_in_signed_data = &mut signed_ext_data.included_in_signed_data;

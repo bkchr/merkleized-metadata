@@ -355,16 +355,19 @@ mod tests {
 	use std::fs;
 
 	use array_bytes::Dehexify;
-	use codec::Decode;
+	use codec::{Decode, Encode};
 	use frame_metadata::RuntimeMetadataPrefixed;
 
 	use super::*;
 	use crate::{
-		extrinsic_decoder::decode_extrinsic_and_collect_type_ids,
+		extrinsic_decoder::{
+			decode_extrinsic_and_collect_type_ids, decode_extrinsic_payload_and_collect_type_ids,
+		},
 		from_frame_metadata::FrameMetadataPrepared,
 		generate_proof_for_extrinsic, generate_proof_for_extrinsic_parts,
+		generate_proof_for_extrinsic_payload,
 		types::{TypeDef, TypeDefArray, TypeRef},
-		SignedExtrinsicData,
+		ExtraInfo, SignedExtrinsicData,
 	};
 
 	#[test]
@@ -620,5 +623,84 @@ mod tests {
 			&merkle_tree,
 		);
 		assert_eq!(merkle_tree.root().hexify_prefixed(), root_hash.hexify_prefixed());
+	}
+	#[test]
+	fn generate_proof_for_payload() {
+		let metadata = String::from_utf8(
+			fs::read(format!("{}/fixtures/rococo_metadata_v15", env!("CARGO_MANIFEST_DIR")))
+				.unwrap(),
+		)
+		.unwrap();
+
+		let metadata = Option::<Vec<u8>>::decode(
+			&mut &Vec::<u8>::dehexify(metadata.strip_suffix("\n").unwrap()).unwrap()[..],
+		)
+		.unwrap()
+		.unwrap();
+
+		let metadata = RuntimeMetadataPrefixed::decode(&mut &metadata[..]).unwrap().1;
+
+		let call = Vec::<u8>::dehexify(TEST_CALL).unwrap();
+		let included_in_extrinsic = Vec::<u8>::dehexify("0x07000000").unwrap();
+		let included_in_signed_data = Vec::<u8>::dehexify(TEST_ADDITIONAL_SIGNED).unwrap();
+		let signed_ext_data = || SignedExtrinsicData {
+			included_in_extrinsic: &included_in_extrinsic,
+			included_in_signed_data: &included_in_signed_data,
+		};
+
+		let extra_info = ExtraInfo {
+			spec_version: 1006002,
+			spec_name: "rococo".into(),
+			base58_prefix: 42,
+			decimals: 12,
+			token_symbol: "ROC".into(),
+		};
+
+		let blob = generate_proof_for_extrinsic_payload(
+			&call,
+			Some(signed_ext_data()),
+			&metadata,
+			&extra_info,
+		)
+		.unwrap();
+
+		// Reconstruct the pieces from the metadata so the blob is validated without depending on
+		// any external reference.
+		let prepared = FrameMetadataPrepared::prepare(&metadata).unwrap();
+		let type_information = prepared.as_type_information().unwrap();
+		let extrinsic_metadata = type_information.extrinsic_metadata.clone();
+
+		let accessed = decode_extrinsic_payload_and_collect_type_ids(
+			&mut &call[..],
+			Some(signed_ext_data()),
+			&type_information,
+			type_information.types.values(),
+		)
+		.unwrap();
+
+		let merkle_tree = MerkleTree::new(type_information.types);
+		let proof = merkle_tree.build_proof(accessed).unwrap();
+
+		// The blob is the merkle proof followed by the `ExtrinsicMetadata` and the `ExtraInfo`.
+		let mut expected = proof.encode();
+		extrinsic_metadata.encode_to(&mut expected);
+		extra_info.encode_to(&mut expected);
+		assert_eq!(blob, expected);
+
+		// The merkle proof reconstructs the metadata root.
+		let root_hash = get_hash(
+			&mut &proof.leaf_indices[..],
+			&mut &proof.leaves[..],
+			&mut &proof.nodes[..],
+			NodeIndex(0),
+			&merkle_tree,
+		);
+		assert_eq!(merkle_tree.root().hexify_prefixed(), root_hash.hexify_prefixed());
+
+		// The payload proof omits the unused `address` / `signature` variants that the full
+		// "parts" proof includes, so it has fewer leaves.
+		let parts_proof =
+			generate_proof_for_extrinsic_parts(&call, Some(signed_ext_data()), &metadata).unwrap();
+		assert!(proof.leaves.len() < parts_proof.leaves.len());
 	}
 }
