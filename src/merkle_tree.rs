@@ -678,7 +678,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let merkle_tree = MerkleTree::new(type_information.types);
+		let merkle_tree = MerkleTree::new(prepared.as_type_information().unwrap().types);
 		let proof = merkle_tree.build_proof(accessed).unwrap();
 
 		// The blob is the merkle proof followed by the `ExtrinsicMetadata` and the `ExtraInfo`.
@@ -686,6 +686,16 @@ mod tests {
 		extrinsic_metadata.encode_to(&mut expected);
 		extra_info.encode_to(&mut expected);
 		assert_eq!(blob, expected);
+
+		// Decoding the payload using only the proof's leaves must succeed, which proves the
+		// proof carries every type needed to decode the call and the signed extensions.
+		decode_extrinsic_payload_and_collect_type_ids(
+			&mut &call[..],
+			Some(signed_ext_data()),
+			&type_information,
+			proof.leaves.iter(),
+		)
+		.unwrap();
 
 		// The merkle proof reconstructs the metadata root.
 		let root_hash = get_hash(
